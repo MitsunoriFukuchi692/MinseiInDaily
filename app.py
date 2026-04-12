@@ -6,27 +6,14 @@ import httpx
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
-@app.route("/__debug/static-js")
-def _debug_static_js():
-    root = os.path.join(app.static_folder, "js")
-    exists = os.path.isdir(root)
-    files = sorted(os.listdir(root)) if exists else []
-    return jsonify({"cwd": os.getcwd(), "app.static_folder": app.static_folder, "exists(static/js)": exists, "files(static/js)": files})
-
-def require_env(name):
-    v = os.environ.get(name)
-    if not v:
-        raise RuntimeError(f"{name} is not set")
-    return v
-
-SUPABASE_URL = require_env("SUPABASE_URL")
-SUPABASE_KEY = require_env("SUPABASE_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 SUPABASE_TABLE = "histories"
 SUPABASE_REST = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
 SUPABASE_HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "return=representation"}
 
-OPENAI_API_KEY = require_env("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY, http_client=httpx.Client(timeout=30))
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+client = OpenAI(api_key=OPENAI_API_KEY, http_client=httpx.Client(timeout=30)) if OPENAI_API_KEY else None
 MODEL = "gpt-4o-mini"
 
 @app.route("/")
@@ -57,10 +44,9 @@ def generate():
         prompt = data.get("prompt", "").strip()
         if not prompt:
             return jsonify({"error": "プロンプトが空です"}), 400
-        response = client.chat.completions.create(model=MODEL, messages=[{"role": "system", "content": "あなたは自分史のライティングアシスタントです。ユーザーの文章を文法や言い回しを整えるだけで改善します。事実の追加・想像・創作は禁止です。"}, {"role": "user", "content": f"以下の文章を整えてください。事実は変えずに、きれいな日本語にしてください：\n{prompt}"}], max_tokens=800, temperature=0.2)
+        response = client.chat.completions.create(model=MODEL, messages=[{"role": "system", "content": "あなたは自分史のライティングアシスタントです。"}, {"role": "user", "content": f"以下の文章を整えてください：\n{prompt}"}], max_tokens=800, temperature=0.2)
         return jsonify({"text": response.choices[0].message.content.strip()})
     except Exception as e:
-        print("Error in /generate:", e)
         return jsonify({"error": str(e)}), 500
 
 @app.route("/save", methods=["POST"])
