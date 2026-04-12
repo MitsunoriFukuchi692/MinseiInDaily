@@ -1,5 +1,6 @@
 ﻿import os
-from flask import Flask, render_template, request, jsonify, make_response
+import io
+from flask import Flask, render_template, request, jsonify, make_response, send_file
 from openai import OpenAI
 import requests
 import httpx
@@ -15,6 +16,7 @@ SUPABASE_HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 client = OpenAI(api_key=OPENAI_API_KEY, http_client=httpx.Client(timeout=30)) if OPENAI_API_KEY else None
 MODEL = "gpt-4o-mini"
+LANG_MAP = {"en": "English", "fil": "Filipino (Tagalog)", "id": "Indonesian", "vi": "Vietnamese", "ja": "Japanese"}
 
 @app.route("/")
 def index():
@@ -46,6 +48,38 @@ def generate():
             return jsonify({"error": "プロンプトが空です"}), 400
         response = client.chat.completions.create(model=MODEL, messages=[{"role": "system", "content": "あなたは自分史のライティングアシスタントです。"}, {"role": "user", "content": f"以下の文章を整えてください：\n{prompt}"}], max_tokens=800, temperature=0.2)
         return jsonify({"text": response.choices[0].message.content.strip()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/translate", methods=["POST"])
+def translate():
+    try:
+        data = request.get_json(silent=True) or {}
+        text = data.get("text", "").strip()
+        direction = data.get("direction", "ja-en")
+        parts = direction.split("-")
+        to_lang = parts[1] if len(parts) == 2 else "en"
+        lang_name = LANG_MAP.get(to_lang, "English")
+        if not text:
+            return jsonify({"error": "empty"}), 400
+        response = client.chat.completions.create(model=MODEL, messages=[{"role": "system", "content": "Translate into " + lang_name + ". Output only the translated text."}, {"role": "user", "content": text}], max_tokens=500, temperature=0.3)
+        return jsonify({"translated": response.choices[0].message.content.strip(), "lang": to_lang})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/tts", methods=["POST"])
+def tts():
+    try:
+        data = request.get_json(silent=True) or {}
+        text = data.get("text", "").strip()
+        lang = data.get("lang", "en")
+        if not text:
+            return jsonify({"error": "empty"}), 400
+        voice = {"ja": "shimmer", "en": "alloy", "fil": "nova", "id": "nova", "vi": "nova"}.get(lang, "alloy")
+        response = client.audio.speech.create(model="tts-1", voice=voice, input=text)
+        audio_bytes = io.BytesIO(response.content)
+        audio_bytes.seek(0)
+        return send_file(audio_bytes, mimetype="audio/mpeg", as_attachment=False)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
