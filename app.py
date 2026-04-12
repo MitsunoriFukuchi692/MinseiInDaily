@@ -66,6 +66,14 @@ def index_new():
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
 
+# ★ 介護支援ボット新UI
+@app.route("/ja/new")
+@app.route("/ja/new/")
+def care_new():
+    resp = make_response(render_template("ja/index_new.html"))
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
 # ====== 文章生成（事実は変えず整えるだけ） ======
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -127,11 +135,4 @@ def get_histories():
         r = requests.get(SUPABASE_REST, headers=SUPABASE_HEADERS, params=params, timeout=10)
         if r.ok:
             return jsonify({"status": "ok", "data": r.json()})
-        return jsonify({"status": "error", "detail": r.text}), r.status_code
-    except Exception as e:
-        return jsonify({"status": "error", "detail": str(e)}), 500
-
-# ====== Render用 ======
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+        return jsonify({"status": "error", "detail": r.text}), r.status_code

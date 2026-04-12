@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AIみまくん 介護支援ボット</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/care_new.css') }}">
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header class="header">
+    <div class="header-inner">
+      <h1>🤖 AIみまくん <span>介護支援ボット</span></h1>
+      <nav>
+        <a href="/camera-test/" target="_blank">📷 カメラ</a>
+        <a href="/ja/daily_report" target="_blank">📝 日報</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- 言語選択 -->
+    <div class="lang-bar">
+      <span>言語：</span>
+      <button class="lang-btn active" data-lang="ja">🇯🇵 日本語</button>
+      <button class="lang-btn" data-lang="en">🇺🇸 English</button>
+      <button class="lang-btn" data-lang="tl">🇵🇭 Filipino</button>
+      <button class="lang-btn" data-lang="id">🇮🇩 Indonesia</button>
+      <button class="lang-btn" data-lang="vi">🇻🇳 Tiếng Việt</button>
+    </div>
+
+    <!-- チャットウィンドウ -->
+    <div class="chat-card">
+      <div id="chat-window">
+        <div class="welcome-msg">
+          <p>👋 こんにちは！介護士と被介護者の会話を入力してください。</p>
+          <p>翻訳・音声読み上げ・日報生成をサポートします。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 入力パネル -->
+    <div class="input-card">
+
+      <!-- 介護士入力 -->
+      <div class="input-row caregiver-row">
+        <span class="role-badge caregiver-badge">介護士</span>
+        <input id="caregiver-input" type="text" placeholder="介護士の発言を入力..." autocomplete="off" />
+        <button class="mic-btn" onclick="startRecognition('caregiver-input', currentLang)">🎤</button>
+        <button class="send-btn caregiver-send" onclick="sendMessage('caregiver')">送信</button>
+      </div>
+
+      <!-- 被介護者入力 -->
+      <div class="input-row caree-row">
+        <span class="role-badge caree-badge">被介護者</span>
+        <input id="caree-input" type="text" placeholder="被介護者の発言を入力..." autocomplete="off" />
+        <button class="mic-btn" onclick="startRecognition('caree-input', 'ja')">🎤</button>
+        <button class="send-btn caree-send" onclick="sendMessage('caree')">送信</button>
+      </div>
+
+    </div>
+
+    <!-- アクションボタン -->
+    <div class="action-card">
+      <button class="action-btn green-btn" id="template-btn">💬 テンプレート対話</button>
+      <button class="action-btn blue-btn" id="translate-btn">🌐 翻訳して読み上げ</button>
+      <button class="action-btn orange-btn" id="save-log-btn">💾 会話ログ保存</button>
+      <button class="action-btn purple-btn" onclick="window.open('/ja/daily_report','_blank')">📝 日報を生成</button>
+    </div>
+
+    <!-- テンプレートパネル（初期非表示） -->
+    <div class="template-card" id="template-panel" style="display:none;">
+      <h3>💬 テンプレート対話</h3>
+      <div id="template-buttons"></div>
+    </div>
+
+    <!-- 翻訳パネル（初期非表示） -->
+    <div class="translate-card" id="translate-panel" style="display:none;">
+      <h3>🌐 翻訳して読み上げ</h3>
+      <div class="translate-row">
+        <select id="translate-direction">
+          <option value="ja-en">日本語 → 英語</option>
+          <option value="en-ja">英語 → 日本語</option>
+          <option value="ja-tl">日本語 → Filipino</option>
+          <option value="ja-id">日本語 → Indonesia</option>
+          <option value="ja-vi">日本語 → Tiếng Việt</option>
+        </select>
+        <button class="action-btn blue-btn" id="do-translate-btn">翻訳する</button>
+      </div>
+      <div id="translation-result" class="translation-result"></div>
+    </div>
+
+  </main>
+
+  <!-- 音声プレーヤー（非表示） -->
+  <audio id="audio-player" style="display:none;"></audio>
+
+  <script src="{{ url_for('static', filename='js/care_new.js') }}"></script>
+</body>
+</html>
