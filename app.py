@@ -1,9 +1,11 @@
-﻿import os
+import os
 import io
-from flask import Flask, render_template, request, jsonify, make_response, send_file
+from flask import Flask, render_template, request, jsonify, make_response, send_file, Response
 from openai import OpenAI
 import requests
 import httpx
+from urllib.parse import quote
+import datetime
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
@@ -45,8 +47,14 @@ def generate():
         data = request.get_json()
         prompt = data.get("prompt", "").strip()
         if not prompt:
-            return jsonify({"error": "プロンプトが空です"}), 400
-        response = client.chat.completions.create(model=MODEL, messages=[{"role": "system", "content": "あなたは自分史のライティングアシスタントです。"}, {"role": "user", "content": f"以下の文章を整えてください：\n{prompt}"}], max_tokens=800, temperature=0.2)
+            return jsonify({"error": "empty"}), 400
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "あなたは自分史のライティングアシスタントです。"},
+                {"role": "user", "content": "以下の文章を整えてください：\n" + prompt}
+            ],
+            max_tokens=800, temperature=0.2)
         return jsonify({"text": response.choices[0].message.content.strip()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -62,7 +70,13 @@ def translate():
         lang_name = LANG_MAP.get(to_lang, "English")
         if not text:
             return jsonify({"error": "empty"}), 400
-        response = client.chat.completions.create(model=MODEL, messages=[{"role": "system", "content": "Translate into " + lang_name + ". Output only the translated text."}, {"role": "user", "content": text}], max_tokens=500, temperature=0.3)
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "Translate into " + lang_name + ". Output only the translated text."},
+                {"role": "user", "content": text}
+            ],
+            max_tokens=500, temperature=0.3)
         return jsonify({"translated": response.choices[0].message.content.strip(), "lang": to_lang})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -89,43 +103,47 @@ def daily_report_inline():
         data = request.get_json(silent=True) or {}
         log = data.get("log", [])
         if not log:
-            return jsonify({"error": "会話ログが空です"}), 400
-
-        # 会話ログをテキストに整形
+            return jsonify({"error": "empty"}), 400
         lines = []
         for entry in log:
             role = "介護士" if entry.get("role") == "caregiver" else "被介護者"
-            time_str = entry.get("time", "")
-            text = entry.get("text", "")
-            lines.append(f"[{time_str}] {role}：{text}")
+            lines.append("[" + entry.get("time","") + "] " + role + "：" + entry.get("text",""))
         log_text = "\n".join(lines)
-
-        today = __import__("datetime").date.today().strftime("%Y年%m月%d日")
-
-        prompt = f"""以下は介護現場での会話記録です。これをもとに、施設の日報として使える文章を作成してください。
-
-【日付】{today}
-【会話記録】
-{log_text}
-
-【日報の形式】
-- 冒頭に日付・担当者欄（担当者名は「（記入）」としておく）
-- 「体調・バイタル」「食事・水分」「排泄」「活動・リハビリ」「会話・コミュニケーション」「特記事項」の6項目で構成
-- 会話から読み取れる情報は具体的に記載し、不明な項目は「記録なし」と記載
-- 丁寧で簡潔な文体で、200〜300字程度にまとめる
-- 日本語で出力する"""
-
+        today = datetime.date.today().strftime("%Y年%m月%d日")
+        sys_msg = "あなたは介護施設の日報作成を支援するアシスタントです。"
+        user_msg = (
+            "以下は介護現場での会話記録です。施設の日報として使える文章を作成してください。\n\n"
+            "【日付】" + today + "\n"
+            "【会話記録】\n" + log_text + "\n\n"
+            "【日報の形式】\n"
+            "- 冒頭に日付・担当者欄（担当者名は「（記入）」としておく）\n"
+            "- 「体調・バイタル」「食事・水分」「排泄」「活動・リハビリ」「会話・コミュニケーション」「特記事項」の6項目で構成\n"
+            "- 会話から読み取れる情報は具体的に記載し、不明な項目は「記録なし」と記載\n"
+            "- 丁寧で簡潔な文体で200〜300字程度にまとめる\n"
+            "- 日本語で出力する"
+        )
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": "あなたは介護施設の日報作成を支援するアシスタントです。"},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_msg}
             ],
-            max_tokens=800,
-            temperature=0.3
-        )
-        report_text = response.choices[0].message.content.strip()
-        return jsonify({"report": report_text})
+            max_tokens=800, temperature=0.3)
+        return jsonify({"report": response.choices[0].message.content.strip()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/download-log", methods=["POST"])
+def download_log():
+    try:
+        data = request.get_json(silent=True) or {}
+        content = data.get("content", "")
+        filename = data.get("filename", "log.txt")
+        if not content:
+            return jsonify({"error": "empty"}), 400
+        resp = Response(content.encode("utf-8"), mimetype="text/plain; charset=utf-8")
+        resp.headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(filename)
+        return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

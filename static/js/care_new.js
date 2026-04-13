@@ -56,7 +56,6 @@ function startRecognition(inputId, lang) {
   recognition.lang = langMap[lang] || 'ja-JP';
   recognition.interimResults = false;
 
-  // マイクボタンを録音中スタイルに
   const btnId = inputId === 'caregiver-input' ? 'mic-caregiver-btn' : 'mic-caree-btn';
   const btn = document.getElementById(btnId);
   if (btn) btn.classList.add('recording');
@@ -180,8 +179,31 @@ async function speakText(text, lang) {
   }
 }
 
+// === ファイルダウンロード共通関数（サーバー経由） ===
+async function downloadFile(content, filename) {
+  try {
+    const res = await fetch('/download-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, filename })
+    });
+    if (!res.ok) throw new Error('サーバーエラー');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    alert('保存に失敗しました: ' + err.message);
+  }
+}
+
 // === 会話ログ保存 ===
-document.getElementById('save-log-btn').addEventListener('click', () => {
+document.getElementById('save-log-btn').addEventListener('click', async () => {
   if (conversationLog.length === 0) {
     alert('保存する会話がありません。');
     return;
@@ -192,13 +214,7 @@ document.getElementById('save-log-btn').addEventListener('click', () => {
   });
   const date = new Date().toLocaleDateString('ja-JP').replace(/\//g, '-');
   const content = `介護支援ボット 会話ログ\n日付: ${date}\n\n` + lines.join('\n');
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `会話ログ_${date}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadFile(content, `会話ログ_${date}.txt`);
 });
 
 // === 日報をインラインで生成 ===
@@ -213,7 +229,6 @@ reportBtn.addEventListener('click', async () => {
     return;
   }
 
-  // パネルを開く
   const isVisible = reportPanel.style.display !== 'none';
   if (isVisible) {
     reportPanel.style.display = 'none';
@@ -223,7 +238,6 @@ reportBtn.addEventListener('click', async () => {
   document.getElementById('template-panel').style.display = 'none';
   document.getElementById('translate-panel').style.display = 'none';
 
-  // ローディング表示
   reportLoading.style.display = 'flex';
   reportContent.textContent = '';
   reportContent.style.display = 'none';
@@ -241,7 +255,6 @@ reportBtn.addEventListener('click', async () => {
     reportContent.style.display = 'block';
     reportContent.textContent = text;
 
-    // スクロール
     reportPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
     reportLoading.style.display = 'none';
@@ -250,7 +263,7 @@ reportBtn.addEventListener('click', async () => {
   }
 });
 
-// コピーボタン
+// === コピーボタン ===
 document.getElementById('copy-report-btn').addEventListener('click', () => {
   const text = reportContent.textContent;
   if (!text) return;
@@ -261,16 +274,10 @@ document.getElementById('copy-report-btn').addEventListener('click', () => {
   });
 });
 
-// テキスト保存ボタン
-document.getElementById('dl-report-btn').addEventListener('click', () => {
+// === 日報テキスト保存ボタン ===
+document.getElementById('dl-report-btn').addEventListener('click', async () => {
   const text = reportContent.textContent;
   if (!text) return;
   const date = new Date().toLocaleDateString('ja-JP').replace(/\//g, '-');
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `日報_${date}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadFile(text, `日報_${date}.txt`);
 });
