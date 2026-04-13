@@ -16,16 +16,15 @@
       <h1>🤖 AIみまくん <span>介護支援ボット</span></h1>
       <nav>
         <a href="/camera-test/" target="_blank">📷 カメラ</a>
-        <a href="/ja/daily_report" target="_blank">📝 日報</a>
       </nav>
     </div>
   </header>
 
   <main class="main">
 
-    <!-- 言語選択 -->
+    <!-- 言語選択（介護士の母国語を選ぶ） -->
     <div class="lang-bar">
-      <span>言語：</span>
+      <span>介護士の言語：</span>
       <button class="lang-btn active" data-lang="ja">🇯🇵 日本語</button>
       <button class="lang-btn" data-lang="en">🇺🇸 English</button>
       <button class="lang-btn" data-lang="tl">🇵🇭 Filipino</button>
@@ -37,29 +36,37 @@
     <div class="chat-card">
       <div id="chat-window">
         <div class="welcome-msg">
-          <p>👋 こんにちは！介護士と被介護者の会話を入力してください。</p>
-          <p>翻訳・音声読み上げ・日報生成をサポートします。</p>
+          <p>👋 こんにちは！</p>
+          <p>マイクボタンを押して話しかけてください。<br>会話を記録して日報を自動生成します。</p>
         </div>
       </div>
     </div>
 
-    <!-- 入力パネル -->
+    <!-- 入力パネル：介護士専用 -->
     <div class="input-card">
 
-      <!-- 介護士入力 -->
-      <div class="input-row caregiver-row">
-        <span class="role-badge caregiver-badge">介護士</span>
-        <input id="caregiver-input" type="text" placeholder="介護士の発言を入力..." autocomplete="off" />
-        <button class="mic-btn" onclick="startRecognition('caregiver-input', currentLang)">🎤</button>
-        <button class="send-btn caregiver-send" onclick="sendMessage('caregiver')">送信</button>
+      <!-- 大型マイクボタン + テキスト入力 -->
+      <div class="mic-main-row">
+        <button class="mic-main-btn" id="mic-caregiver-btn" onclick="startRecognition('caregiver-input', currentLang)" title="介護士の発言を音声入力">
+          🎤
+          <span class="mic-label">介護士</span>
+        </button>
+        <div class="input-inner">
+          <input id="caregiver-input" type="text" placeholder="介護士の発言を入力（またはマイクで話す）..." autocomplete="off" />
+          <button class="send-btn caregiver-send" onclick="sendMessage('caregiver')">送信</button>
+        </div>
       </div>
 
-      <!-- 被介護者入力 -->
-      <div class="input-row caree-row">
-        <span class="role-badge caree-badge">被介護者</span>
-        <input id="caree-input" type="text" placeholder="被介護者の発言を入力..." autocomplete="off" />
-        <button class="mic-btn" onclick="startRecognition('caree-input', 'ja')">🎤</button>
-        <button class="send-btn caree-send" onclick="sendMessage('caree')">送信</button>
+      <!-- 被介護者発言（介護士が代理入力） -->
+      <div class="mic-main-row caree-row-style">
+        <button class="mic-main-btn mic-caree" id="mic-caree-btn" onclick="startRecognition('caree-input', 'ja')" title="被介護者の発言を音声入力">
+          🎤
+          <span class="mic-label">被介護者</span>
+        </button>
+        <div class="input-inner">
+          <input id="caree-input" type="text" placeholder="被介護者の発言を入力（介護士が代理入力）..." autocomplete="off" />
+          <button class="send-btn caree-send" onclick="sendMessage('caree')">送信</button>
+        </div>
       </div>
 
     </div>
@@ -69,7 +76,7 @@
       <button class="action-btn green-btn" id="template-btn">💬 テンプレート対話</button>
       <button class="action-btn blue-btn" id="translate-btn">🌐 翻訳して読み上げ</button>
       <button class="action-btn orange-btn" id="save-log-btn">💾 会話ログ保存</button>
-      <button class="action-btn purple-btn" onclick="window.open('/ja/daily_report','_blank')">📝 日報を生成</button>
+      <button class="action-btn purple-btn" id="report-btn">📝 日報を生成</button>
     </div>
 
     <!-- テンプレートパネル（初期非表示） -->
@@ -92,6 +99,21 @@
         <button class="action-btn blue-btn" id="do-translate-btn">翻訳する</button>
       </div>
       <div id="translation-result" class="translation-result"></div>
+    </div>
+
+    <!-- 日報プレビューパネル（初期非表示） -->
+    <div class="report-card" id="report-panel" style="display:none;">
+      <div class="report-header">
+        <h3>📝 日報プレビュー</h3>
+        <div class="report-actions">
+          <button class="report-action-btn copy-btn" id="copy-report-btn">📋 コピー</button>
+          <button class="report-action-btn dl-btn" id="dl-report-btn">⬇️ テキスト保存</button>
+        </div>
+      </div>
+      <div id="report-loading" class="report-loading" style="display:none;">
+        <span class="spinner"></span> 日報を生成中...
+      </div>
+      <div id="report-content" class="report-content"></div>
     </div>
 
   </main>

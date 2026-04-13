@@ -1,9 +1,9 @@
-// === 介護支援ボット care_new.js ===
+// === 介護支援ボット care_new.js（介護士専用モード） ===
 
 let currentLang = 'ja';
 let conversationLog = [];
 
-// === 言語選択 ===
+// === 言語選択（介護士の母国語） ===
 document.querySelectorAll('.lang-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
@@ -27,14 +27,11 @@ function sendMessage(role) {
 
 function appendMessage(role, text) {
   const chatWindow = document.getElementById('chat-window');
-
-  // ウェルカムメッセージを消す
   const welcome = chatWindow.querySelector('.welcome-msg');
   if (welcome) welcome.remove();
 
   const div = document.createElement('div');
   div.className = `message ${role}`;
-
   const roleName = role === 'caregiver' ? '介護士' : '被介護者';
   div.innerHTML = `<div class="role-name">${roleName}</div>${escapeHtml(text)}`;
   chatWindow.appendChild(div);
@@ -52,14 +49,16 @@ function escapeHtml(text) {
 // === 音声入力 ===
 function startRecognition(inputId, lang) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { alert('このブラウザは音声入力に対応していません。ChromeかFirefoxをお使いください。'); return; }
+  if (!SR) { alert('このブラウザは音声入力に対応していません。Chromeをお使いください。'); return; }
 
   const langMap = { ja: 'ja-JP', en: 'en-US', tl: 'fil-PH', id: 'id-ID', vi: 'vi-VN' };
   const recognition = new SR();
   recognition.lang = langMap[lang] || 'ja-JP';
   recognition.interimResults = false;
 
-  const btn = document.querySelector(`button[onclick*="${inputId}"]`);
+  // マイクボタンを録音中スタイルに
+  const btnId = inputId === 'caregiver-input' ? 'mic-caregiver-btn' : 'mic-caree-btn';
+  const btn = document.getElementById(btnId);
   if (btn) btn.classList.add('recording');
 
   recognition.start();
@@ -69,7 +68,7 @@ function startRecognition(inputId, lang) {
     if (btn) btn.classList.remove('recording');
   };
   recognition.onerror = () => { if (btn) btn.classList.remove('recording'); };
-  recognition.onend = () => { if (btn) btn.classList.remove('recording'); };
+  recognition.onend   = () => { if (btn) btn.classList.remove('recording'); };
 }
 
 // === Enterキーで送信 ===
@@ -96,7 +95,6 @@ const templateBtn = document.getElementById('template-btn');
 const templatePanel = document.getElementById('template-panel');
 const templateButtons = document.getElementById('template-buttons');
 
-// テンプレートボタンを生成
 templates.forEach(text => {
   const btn = document.createElement('button');
   btn.className = 'template-item';
@@ -112,6 +110,10 @@ templates.forEach(text => {
 templateBtn.addEventListener('click', () => {
   const isVisible = templatePanel.style.display !== 'none';
   templatePanel.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) {
+    document.getElementById('translate-panel').style.display = 'none';
+    document.getElementById('report-panel').style.display = 'none';
+  }
 });
 
 // === 翻訳して読み上げ ===
@@ -123,10 +125,13 @@ const translationResult = document.getElementById('translation-result');
 translateBtn.addEventListener('click', () => {
   const isVisible = translatePanel.style.display !== 'none';
   translatePanel.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) {
+    document.getElementById('template-panel').style.display = 'none';
+    document.getElementById('report-panel').style.display = 'none';
+  }
 });
 
 doTranslateBtn.addEventListener('click', async () => {
-  // 最後のメッセージを取得
   const lastMsg = conversationLog[conversationLog.length - 1];
   if (!lastMsg) {
     translationResult.textContent = '先に会話を入力してください。';
@@ -148,10 +153,7 @@ doTranslateBtn.addEventListener('click', async () => {
     const data = await res.json();
     const translated = data.translated || data.text || 'エラーが発生しました';
     translationResult.textContent = translated;
-
-    // TTSで読み上げ
     await speakText(translated, toLang);
-
   } catch (err) {
     translationResult.textContent = 'エラーが発生しました: ' + err.message;
   } finally {
@@ -184,12 +186,10 @@ document.getElementById('save-log-btn').addEventListener('click', () => {
     alert('保存する会話がありません。');
     return;
   }
-
   const lines = conversationLog.map(entry => {
     const role = entry.role === 'caregiver' ? '介護士' : '被介護者';
     return `[${entry.time}] ${role}: ${entry.text}`;
   });
-
   const date = new Date().toLocaleDateString('ja-JP').replace(/\//g, '-');
   const content = `介護支援ボット 会話ログ\n日付: ${date}\n\n` + lines.join('\n');
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -197,6 +197,80 @@ document.getElementById('save-log-btn').addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = url;
   a.download = `会話ログ_${date}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// === 日報をインラインで生成 ===
+const reportBtn = document.getElementById('report-btn');
+const reportPanel = document.getElementById('report-panel');
+const reportLoading = document.getElementById('report-loading');
+const reportContent = document.getElementById('report-content');
+
+reportBtn.addEventListener('click', async () => {
+  if (conversationLog.length === 0) {
+    alert('会話を入力してから日報を生成してください。');
+    return;
+  }
+
+  // パネルを開く
+  const isVisible = reportPanel.style.display !== 'none';
+  if (isVisible) {
+    reportPanel.style.display = 'none';
+    return;
+  }
+  reportPanel.style.display = 'block';
+  document.getElementById('template-panel').style.display = 'none';
+  document.getElementById('translate-panel').style.display = 'none';
+
+  // ローディング表示
+  reportLoading.style.display = 'flex';
+  reportContent.textContent = '';
+  reportContent.style.display = 'none';
+
+  try {
+    const res = await fetch('/daily-report-inline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ log: conversationLog })
+    });
+    const data = await res.json();
+    const text = data.report || 'エラーが発生しました。';
+
+    reportLoading.style.display = 'none';
+    reportContent.style.display = 'block';
+    reportContent.textContent = text;
+
+    // スクロール
+    reportPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    reportLoading.style.display = 'none';
+    reportContent.style.display = 'block';
+    reportContent.textContent = 'エラーが発生しました: ' + err.message;
+  }
+});
+
+// コピーボタン
+document.getElementById('copy-report-btn').addEventListener('click', () => {
+  const text = reportContent.textContent;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-report-btn');
+    btn.textContent = '✅ コピーしました';
+    setTimeout(() => { btn.textContent = '📋 コピー'; }, 2000);
+  });
+});
+
+// テキスト保存ボタン
+document.getElementById('dl-report-btn').addEventListener('click', () => {
+  const text = reportContent.textContent;
+  if (!text) return;
+  const date = new Date().toLocaleDateString('ja-JP').replace(/\//g, '-');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `日報_${date}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 });

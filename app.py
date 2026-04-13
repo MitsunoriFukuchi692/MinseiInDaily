@@ -83,6 +83,52 @@ def tts():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/daily-report-inline", methods=["POST"])
+def daily_report_inline():
+    try:
+        data = request.get_json(silent=True) or {}
+        log = data.get("log", [])
+        if not log:
+            return jsonify({"error": "会話ログが空です"}), 400
+
+        # 会話ログをテキストに整形
+        lines = []
+        for entry in log:
+            role = "介護士" if entry.get("role") == "caregiver" else "被介護者"
+            time_str = entry.get("time", "")
+            text = entry.get("text", "")
+            lines.append(f"[{time_str}] {role}：{text}")
+        log_text = "\n".join(lines)
+
+        today = __import__("datetime").date.today().strftime("%Y年%m月%d日")
+
+        prompt = f"""以下は介護現場での会話記録です。これをもとに、施設の日報として使える文章を作成してください。
+
+【日付】{today}
+【会話記録】
+{log_text}
+
+【日報の形式】
+- 冒頭に日付・担当者欄（担当者名は「（記入）」としておく）
+- 「体調・バイタル」「食事・水分」「排泄」「活動・リハビリ」「会話・コミュニケーション」「特記事項」の6項目で構成
+- 会話から読み取れる情報は具体的に記載し、不明な項目は「記録なし」と記載
+- 丁寧で簡潔な文体で、200〜300字程度にまとめる
+- 日本語で出力する"""
+
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "あなたは介護施設の日報作成を支援するアシスタントです。"},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=800,
+            temperature=0.3
+        )
+        report_text = response.choices[0].message.content.strip()
+        return jsonify({"report": report_text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/save", methods=["POST"])
 def save_history():
     try:
