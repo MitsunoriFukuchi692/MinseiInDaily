@@ -2,6 +2,61 @@
 
 let currentLang = 'ja';
 let conversationLog = [];
+let currentRoomId = null;
+let pollCount = 0;
+let pollingTimer = null;
+
+// === ルームを作成する ===
+async function createRoom() {
+  try {
+    const btn = document.getElementById('create-room-btn');
+    btn.textContent = '作成中...';
+    btn.disabled = true;
+
+    const res = await fetch('/room/create', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const data = await res.json();
+    currentRoomId = data.room_id;
+
+    // ルームIDを画面に表示
+    document.getElementById('room-id-display').textContent = '🔑 ' + currentRoomId;
+    const careeUrl = location.origin + '/ja/caree';
+    document.getElementById('room-url-display').textContent = '被介護者URL: ' + careeUrl;
+
+    btn.textContent = '✅ 接続中';
+    btn.style.background = '#4caf7d';
+
+    // ポーリング開始（3秒ごとに被介護者のメッセージを取得）
+    startPolling();
+
+    alert('ルームID: ' + currentRoomId + '\n\n被介護者のスマホで\n' + careeUrl + '\nを開いて、このIDを入力してください。');
+  } catch (err) {
+    alert('ルーム作成に失敗しました: ' + err.message);
+    const btn = document.getElementById('create-room-btn');
+    btn.textContent = '部屋を作る';
+    btn.disabled = false;
+  }
+}
+
+// === 被介護者のメッセージをポーリングで取得 ===
+function startPolling() {
+  if (pollingTimer) clearInterval(pollingTimer);
+  pollingTimer = setInterval(async () => {
+    if (!currentRoomId) return;
+    try {
+      const res = await fetch(`/room/poll?room_id=${currentRoomId}&since=${pollCount}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.entries && data.entries.length > 0) {
+        data.entries.forEach(entry => {
+          // 被介護者からのメッセージを画面に表示してログに追加
+          appendMessage(entry.role, entry.text);
+          conversationLog.push({ role: entry.role, text: entry.text, time: entry.time });
+        });
+        pollCount = data.total;
+      }
+    } catch (err) {}
+  }, 3000);
+}
 
 // === 言語選択（介護士の母国語） ===
 document.querySelectorAll('.lang-btn').forEach(btn => {
@@ -13,16 +68,29 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
 });
 
 // === メッセージ追加 ===
-function sendMessage(role) {
+async function sendMessage(role) {
   const inputId = role === 'caregiver' ? 'caregiver-input' : 'caree-input';
   const input = document.getElementById(inputId);
   const text = input.value.trim();
   if (!text) return;
 
+  const time = new Date().toLocaleTimeString('ja-JP');
   appendMessage(role, text);
-  conversationLog.push({ role, text, time: new Date().toLocaleTimeString('ja-JP') });
+  conversationLog.push({ role, text, time });
   input.value = '';
   input.focus();
+
+  // ルームがある場合、介護士の発言もサーバーに送信（被介護者側にも表示される）
+  if (currentRoomId && role === 'caregiver') {
+    try {
+      await fetch('/room/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: currentRoomId, text, role: 'caregiver' })
+      });
+      pollCount++;
+    } catch (err) {}
+  }
 }
 
 function appendMessage(role, text) {

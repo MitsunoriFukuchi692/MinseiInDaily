@@ -1,5 +1,7 @@
 import os
 import io
+import random
+import string
 from flask import Flask, render_template, request, jsonify, make_response, send_file, Response
 from openai import OpenAI
 import requests
@@ -8,6 +10,14 @@ from urllib.parse import quote
 import datetime
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
+
+# ── ルーム管理（メモリ上） ──
+# rooms = { "1234": { "log": [...], "created_at": datetime } }
+rooms = {}
+
+def generate_room_id():
+    """4桁のランダムなルームIDを生成"""
+    return ''.join(random.choices(string.digits, k=4))
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
@@ -40,6 +50,51 @@ def care_new():
     resp = make_response(render_template("ja/index_new.html"))
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
+
+@app.route("/ja/caree")
+@app.route("/ja/caree/")
+def care_caree():
+    """被介護者用のシンプルな入力画面"""
+    resp = make_response(render_template("ja/caree.html"))
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+# ── ルームAPI ──
+@app.route("/room/create", methods=["POST"])
+def room_create():
+    """介護士がルームを作成する"""
+    room_id = generate_room_id()
+    # 万一重複したら再生成
+    while room_id in rooms:
+        room_id = generate_room_id()
+    rooms[room_id] = {"log": [], "created_at": datetime.datetime.now().isoformat()}
+    return jsonify({"room_id": room_id})
+
+@app.route("/room/post", methods=["POST"])
+def room_post():
+    """介護士または被介護者がメッセージを送信する"""
+    data = request.get_json(silent=True) or {}
+    room_id = data.get("room_id", "").strip()
+    text = data.get("text", "").strip()
+    role = data.get("role", "caree")  # デフォルトは被介護者
+    if not room_id or room_id not in rooms:
+        return jsonify({"error": "ルームが見つかりません。ルームIDを確認してください。"}), 404
+    if not text:
+        return jsonify({"error": "empty"}), 400
+    entry = {"role": role, "text": text, "time": datetime.datetime.now().strftime("%H:%M:%S")}
+    rooms[room_id]["log"].append(entry)
+    return jsonify({"status": "ok"})
+
+@app.route("/room/poll", methods=["GET"])
+def room_poll():
+    """介護士側が新しいメッセージを取得する"""
+    room_id = request.args.get("room_id", "").strip()
+    since = int(request.args.get("since", 0))
+    if not room_id or room_id not in rooms:
+        return jsonify({"error": "ルームが見つかりません"}), 404
+    log = rooms[room_id]["log"]
+    new_entries = log[since:]
+    return jsonify({"entries": new_entries, "total": len(log)})
 
 @app.route("/generate", methods=["POST"])
 def generate():

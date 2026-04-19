@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AIみまくん - 被介護者用</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    .header {
+      background: #ff8c42;
+      color: white;
+      width: 100%;
+      max-width: 500px;
+      border-radius: 12px;
+      padding: 16px 20px;
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 1.3rem;
+      font-weight: 700;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      color: #555;
+      margin-bottom: 12px;
+    }
+    .room-input-row {
+      display: flex;
+      gap: 10px;
+    }
+    input[type="text"] {
+      flex: 1;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 1.1rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: #ff8c42; }
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-orange { background: #ff8c42; color: white; }
+    .btn-green { background: #4caf7d; color: white; }
+    .btn-mic {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      font-size: 2rem;
+      background: #ff8c42;
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      transition: background 0.2s;
+    }
+    .btn-mic.recording { background: #e53935; animation: pulse 1s infinite; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(229,57,53,0.4); }
+      70% { box-shadow: 0 0 0 16px rgba(229,57,53,0); }
+      100% { box-shadow: 0 0 0 0 rgba(229,57,53,0); }
+    }
+    .msg-area {
+      width: 100%;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 1.1rem;
+      font-family: inherit;
+      resize: none;
+      height: 100px;
+      margin-bottom: 12px;
+    }
+    .msg-area:focus { outline: none; border-color: #ff8c42; }
+    .status-msg {
+      text-align: center;
+      font-size: 0.95rem;
+      color: #888;
+      margin-top: 8px;
+      min-height: 24px;
+    }
+    .status-msg.success { color: #4caf7d; font-weight: 700; }
+    .status-msg.error { color: #e53935; font-weight: 700; }
+    #main-panel { display: none; }
+    .chat-log {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+      background: #fafafa;
+    }
+    .chat-log .msg {
+      padding: 6px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 0.95rem;
+      color: #444;
+    }
+    .chat-log .msg:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+  <div class="header">🤲 AIみまくん - 被介護者用画面</div>
+
+  <!-- ルームID入力パネル -->
+  <div class="card" id="room-panel">
+    <h2>📋 ルームIDを入力してください</h2>
+    <p style="font-size:0.9rem; color:#888; margin-bottom:12px;">介護士さんから教えてもらった4桁の番号を入力してください。</p>
+    <div class="room-input-row">
+      <input type="text" id="room-id-input" maxlength="4" placeholder="例：1234" />
+      <button class="btn btn-orange" onclick="joinRoom()">入室</button>
+    </div>
+    <div class="status-msg" id="room-status"></div>
+  </div>
+
+  <!-- メイン入力パネル（入室後に表示） -->
+  <div class="card" id="main-panel">
+    <h2>💬 話しかけてください</h2>
+
+    <!-- 会話ログ表示 -->
+    <div class="chat-log" id="chat-log">
+      <div class="msg" style="color:#aaa;">会話がここに表示されます</div>
+    </div>
+
+    <!-- マイクボタン -->
+    <button class="btn-mic" id="mic-btn" onclick="startMic()">🎤</button>
+
+    <!-- テキスト入力 -->
+    <textarea class="msg-area" id="msg-input" placeholder="または、ここに文字を入力してください..."></textarea>
+    <button class="btn btn-green" style="width:100%;" onclick="sendMsg()">送信する</button>
+    <div class="status-msg" id="send-status"></div>
+  </div>
+
+  <script>
+    let roomId = '';
+    let logCount = 0;
+
+    // === 入室 ===
+    async function joinRoom() {
+      const input = document.getElementById('room-id-input').value.trim();
+      if (input.length !== 4) {
+        showStatus('room-status', '4桁の番号を入力してください。', 'error');
+        return;
+      }
+      // ルームの存在確認（pollで0件取得）
+      try {
+        const res = await fetch(`/room/poll?room_id=${input}&since=0`);
+        if (!res.ok) {
+          const data = await res.json();
+          showStatus('room-status', data.error || 'ルームが見つかりません。', 'error');
+          return;
+        }
+        roomId = input;
+        document.getElementById('room-panel').style.display = 'none';
+        document.getElementById('main-panel').style.display = 'block';
+        startPolling();
+      } catch (err) {
+        showStatus('room-status', '接続エラーが発生しました。', 'error');
+      }
+    }
+
+    // === メッセージ送信 ===
+    async function sendMsg() {
+      const text = document.getElementById('msg-input').value.trim();
+      if (!text) return;
+      try {
+        const res = await fetch('/room/post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room_id: roomId, text })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('msg-input').value = '';
+          showStatus('send-status', '✅ 送信しました！', 'success');
+          setTimeout(() => showStatus('send-status', '', ''), 2000);
+        } else {
+          showStatus('send-status', data.error || '送信エラー', 'error');
+        }
+      } catch (err) {
+        showStatus('send-status', '送信に失敗しました。', 'error');
+      }
+    }
+
+    // === 音声入力 ===
+    function startMic() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { alert('このブラウザは音声入力に対応していません。Chromeをお使いください。'); return; }
+      const recognition = new SR();
+      recognition.lang = 'ja-JP';
+      recognition.interimResults = false;
+      const btn = document.getElementById('mic-btn');
+      btn.classList.add('recording');
+      recognition.start();
+      recognition.onresult = (e) => {
+        document.getElementById('msg-input').value = e.results[0][0].transcript;
+        btn.classList.remove('recording');
+      };
+      recognition.onerror = () => btn.classList.remove('recording');
+      recognition.onend = () => btn.classList.remove('recording');
+    }
+
+    // === ポーリング（介護士側からのメッセージも表示） ===
+    function startPolling() {
+      setInterval(async () => {
+        try {
+          const res = await fetch(`/room/poll?room_id=${roomId}&since=${logCount}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.entries && data.entries.length > 0) {
+            const log = document.getElementById('chat-log');
+            // 初期メッセージを消す
+            if (logCount === 0) log.innerHTML = '';
+            data.entries.forEach(entry => {
+              const div = document.createElement('div');
+              div.className = 'msg';
+              const role = entry.role === 'caregiver' ? '介護士' : 'あなた';
+              div.textContent = `[${entry.time}] ${role}：${entry.text}`;
+              log.appendChild(div);
+            });
+            logCount = data.total;
+            log.scrollTop = log.scrollHeight;
+          }
+        } catch (err) {}
+      }, 3000);
+    }
+
+    // === Enterキーで送信 ===
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('msg-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+      });
+      document.getElementById('room-id-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') joinRoom();
+      });
+    });
+
+    function showStatus(id, msg, type) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.className = 'status-msg ' + type;
+    }
+  </script>
+</body>
+</html>

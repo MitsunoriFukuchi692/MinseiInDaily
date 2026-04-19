@@ -42,6 +42,16 @@
       </div>
     </div>
 
+    <!-- ルームID パネル -->
+    <div class="input-card" id="room-card">
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span style="font-weight:700; color:#555;">📡 2台接続：</span>
+        <button class="send-btn caregiver-send" id="create-room-btn" onclick="createRoom()" style="padding:8px 18px;">部屋を作る</button>
+        <span id="room-id-display" style="font-size:1.2rem; font-weight:700; color:#e53935; letter-spacing:4px;"></span>
+        <span id="room-url-display" style="font-size:0.85rem; color:#888;"></span>
+      </div>
+    </div>
+
     <!-- 入力パネル：介護士専用 -->
     <div class="input-card">
 
@@ -57,14 +67,14 @@
         </div>
       </div>
 
-      <!-- 被介護者発言（介護士が代理入力） -->
+      <!-- 被介護者発言（代理入力または2台接続時は自動表示） -->
       <div class="mic-main-row caree-row-style">
         <button class="mic-main-btn mic-caree" id="mic-caree-btn" onclick="startRecognition('caree-input', 'ja')" title="被介護者の発言を音声入力">
           🎤
           <span class="mic-label">被介護者</span>
         </button>
         <div class="input-inner">
-          <input id="caree-input" type="text" placeholder="被介護者の発言を入力（介護士が代理入力）..." autocomplete="off" />
+          <input id="caree-input" type="text" placeholder="被介護者の発言を入力（代理入力）..." autocomplete="off" />
           <button class="send-btn caree-send" onclick="sendMessage('caree')">送信</button>
         </div>
       </div>
