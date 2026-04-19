@@ -124,12 +124,21 @@
       background: #fafafa;
     }
     .chat-log .msg {
-      padding: 6px 0;
-      border-bottom: 1px solid #f0f0f0;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-bottom: 6px;
       font-size: 0.95rem;
-      color: #444;
     }
-    .chat-log .msg:last-child { border-bottom: none; }
+    .chat-log .msg-caregiver {
+      background: #e3f2fd;
+      color: #1565c0;
+      text-align: left;
+    }
+    .chat-log .msg-caree {
+      background: #fff3e0;
+      color: #e65100;
+      text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -247,8 +256,9 @@
             if (logCount === 0) log.innerHTML = '';
             data.entries.forEach(entry => {
               const div = document.createElement('div');
-              div.className = 'msg';
-              const role = entry.role === 'caregiver' ? '介護士' : 'あなた';
+              const isCaregiver = entry.role === 'caregiver';
+              div.className = 'msg ' + (isCaregiver ? 'msg-caregiver' : 'msg-caree');
+              const role = isCaregiver ? '介護士' : 'あなた';
               div.textContent = `[${entry.time}] ${role}：${entry.text}`;
               log.appendChild(div);
             });
