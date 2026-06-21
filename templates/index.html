@@ -2,72 +2,143 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>自分史ジェネレーター（安定版）</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-  <style>
-    body {
-      font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-      background: #f5f5f5;
-      margin: 0;
-      padding: 0;
-    }
-    .container { max-width: 900px; margin: auto; padding: 20px; }
-    h2 { margin-bottom: 15px; }
-
-    /* タブ */
-    #presetTabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-    #presetTabs button.active { background-color: #007bff; color: #fff; }
-
-    /* プリセットチップ */
-    #presetArea { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-    #presetArea button {
-      background: #eee; border: 1px solid #ccc; border-radius: 4px;
-      padding: 5px 10px; cursor: pointer;
-    }
-    #presetArea button:hover { background: #ddd; }
-
-    textarea {
-      width: 100%; min-height: 120px; margin-bottom: 10px;
-      padding: 10px; font-size: 16px;
-    }
-    .button-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-    .button-row button { padding: 8px 12px; font-size: 15px; cursor: pointer; }
-    .output-area textarea { min-height: 200px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>民生委員 かんたん日報</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/minsei.css') }}">
 </head>
 <body>
-  <div class="container">
-    <h2>自分史ジェネレーター</h2>
 
-    <!-- ✅ プリセット -->
-    <div id="presetTabs"></div>
-    <div id="presetArea"></div>
-
-    <!-- ✅ 入力欄 -->
-    <textarea id="userInput" placeholder="ここに質問または音声入力を入力してください"></textarea>
-
-    <div class="button-row">
-      <button id="micBtn">🎤 音声入力</button>
-      <button id="generateBtn">生成する</button>
-      <button id="clearBtn">クリア</button>
-      <button id="addQuestionBtn">質問欄に追加</button>
+  <!-- ヘッダー -->
+  <header class="header">
+    <div class="header-inner">
+      <h1>📋 民生委員 かんたん日報</h1>
+      <button class="logout-btn" id="logout-btn" style="display:none;" onclick="logout()">ログアウト</button>
     </div>
+  </header>
 
-    <!-- ✅ 出力欄 -->
-    <div class="output-area">
-      <textarea id="result" readonly placeholder="ここに生成結果が表示されます"></textarea>
-      <div class="button-row">
-        <button id="copyResultBtn">結果をコピー</button>
-        <button id="saveBtn">保存</button>
-        <button id="loadBtn">読み込み</button>
-        <button id="downloadTxtBtn">.txtでDL</button>
+  <main class="main">
+
+    <!-- ======== 画面1: ログイン ======== -->
+    <div id="screen-login" class="screen">
+      <div class="login-card">
+        <div class="login-icon">🏘️</div>
+        <h2 class="login-title">ログイン</h2>
+        <p class="login-sub">メールアドレスとパスワードを入力してください</p>
+
+        <div class="form-group">
+          <label class="form-label">メールアドレス</label>
+          <input type="email" id="login-email" class="form-input" placeholder="example@city.lg.jp" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">パスワード</label>
+          <input type="password" id="login-password" class="form-input" placeholder="パスワード" autocomplete="current-password" />
+        </div>
+
+        <div id="login-error" class="error-msg" style="display:none;"></div>
+
+        <button class="big-btn green-btn" id="login-btn" onclick="doLogin()">
+          ログイン
+        </button>
       </div>
     </div>
-  </div>
 
-  <!-- JS 読み込み（キャッシュ対策）-->
-<script src="/static/js/jibunshi_v3.js?v=20251023"></script>
-<!-- FORCE REDEPLOY 20251023-2 -->
+    <!-- ======== 画面2: 担当住民リスト ======== -->
+    <div id="screen-residents" class="screen" style="display:none;">
+      <div class="section-header">
+        <h2>担当住民リスト</h2>
+        <p class="section-sub" id="commissioner-name-display"></p>
+      </div>
+
+      <div id="residents-loading" class="loading-msg">
+        <span class="spinner"></span> 住民リストを読み込み中...
+      </div>
+
+      <div id="residents-list"></div>
+
+      <div id="residents-empty" class="empty-msg" style="display:none;">
+        担当住民が登録されていません。<br>管理者にお問い合わせください。
+      </div>
+    </div>
+
+    <!-- ======== 画面3: 音声録音 ======== -->
+    <div id="screen-recording" class="screen" style="display:none;">
+      <div class="back-row">
+        <button class="back-btn" onclick="showScreen('residents')">← 住民リストへ戻る</button>
+      </div>
+
+      <div class="resident-badge" id="recording-resident-name"></div>
+      <div class="visit-date" id="recording-date"></div>
+
+      <!-- 大型マイクボタン -->
+      <div class="mic-area">
+        <button class="mic-big-btn" id="mic-btn" onclick="toggleMic()">
+          <span class="mic-icon">🎤</span>
+          <span class="mic-label" id="mic-label">タップして録音開始</span>
+        </button>
+        <div class="mic-status" id="mic-status"></div>
+      </div>
+
+      <!-- 録音テキスト表示 -->
+      <div class="voice-card" id="voice-card" style="display:none;">
+        <div class="voice-card-header">
+          <span class="voice-card-title">📝 録音内容</span>
+          <button class="clear-btn" onclick="clearVoice()">クリア</button>
+        </div>
+        <textarea id="voice-text" class="voice-textarea" placeholder="録音内容がここに表示されます。手入力で修正もできます。"></textarea>
+      </div>
+
+      <!-- 日報生成ボタン -->
+      <button class="big-btn purple-btn" id="generate-btn" onclick="generateReport()" style="display:none;">
+        📋 AI日報を生成する
+      </button>
+    </div>
+
+    <!-- ======== 画面4: 日報プレビュー ======== -->
+    <div id="screen-report" class="screen" style="display:none;">
+      <div class="back-row">
+        <button class="back-btn" onclick="showScreen('recording')">← 録音画面へ戻る</button>
+      </div>
+
+      <div class="report-title-row">
+        <h2>📋 訪問日報</h2>
+        <div class="report-meta" id="report-meta"></div>
+      </div>
+
+      <div id="report-loading" class="loading-msg" style="display:none;">
+        <span class="spinner"></span> AI日報を生成中...
+      </div>
+
+      <div class="report-card" id="report-card" style="display:none;">
+        <textarea id="report-content" class="report-textarea"></textarea>
+      </div>
+
+      <!-- アクションボタン -->
+      <div class="report-actions" id="report-actions" style="display:none;">
+        <button class="big-btn green-btn" onclick="saveReport()">
+          💾 保存する
+        </button>
+        <button class="big-btn blue-btn" onclick="downloadReport()">
+          ⬇️ テキスト保存
+        </button>
+        <button class="big-btn gray-btn" onclick="copyReport()">
+          📋 コピー
+        </button>
+      </div>
+
+      <div id="save-status" class="save-status" style="display:none;"></div>
+    </div>
+
+  </main>
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
+  <script>
+    // Supabase設定（Flaskから埋め込み）
+    const SUPABASE_URL = "{{ supabase_url }}";
+    const SUPABASE_KEY = "{{ supabase_key }}";
+  </script>
+  <script src="{{ url_for('static', filename='js/minsei.js') }}"></script>
 </body>
 </html>

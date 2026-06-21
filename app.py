@@ -1,229 +1,171 @@
 import os
-import io
-import random
-import string
-from flask import Flask, render_template, request, jsonify, make_response, send_file, Response
-from openai import OpenAI
+import datetime
+from dotenv import load_dotenv
+load_dotenv()
 import requests
 import httpx
 from urllib.parse import quote
-import datetime
+from flask import Flask, render_template, request, jsonify, Response
+from openai import OpenAI
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
-# ── ルーム管理（メモリ上） ──
-# rooms = { "1234": { "log": [...], "created_at": datetime } }
-rooms = {}
-
-def generate_room_id():
-    """4桁のランダムなルームIDを生成"""
-    return ''.join(random.choices(string.digits, k=4))
-
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-SUPABASE_TABLE = "histories"
-SUPABASE_REST = f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}"
-SUPABASE_HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", "Content-Type": "application/json", "Prefer": "return=representation"}
-
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 client = OpenAI(api_key=OPENAI_API_KEY, http_client=httpx.Client(timeout=30)) if OPENAI_API_KEY else None
 MODEL = "gpt-4o-mini"
-LANG_MAP = {"en": "English", "fil": "Filipino (Tagalog)", "id": "Indonesian", "vi": "Vietnamese", "ja": "Japanese"}
 
+
+def supabase_headers(user_token=None):
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {user_token or SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def verify_token(token):
+    """Supabase Auth トークンを検証してユーザー情報を返す"""
+    if not token or not SUPABASE_URL:
+        return None
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if r.ok:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
+
+def auth_token():
+    """リクエストヘッダーからトークンを取得"""
+    return request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+
+
+# ── メイン画面 ──
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html",
+                           supabase_url=SUPABASE_URL,
+                           supabase_key=SUPABASE_KEY)
 
-@app.route("/jibunshi")
-def jibunshi():
-    return render_template("index.html")
 
-@app.route("/new")
-def index_new():
-    resp = make_response(render_template("index_new.html"))
-    resp.headers["Cache-Control"] = "no-store, max-age=0"
-    return resp
+# ── 担当住民一覧取得 ──
+@app.route("/api/residents", methods=["GET"])
+def get_residents():
+    token = auth_token()
+    user = verify_token(token)
+    if not user:
+        return jsonify({"error": "認証が必要です"}), 401
 
-@app.route("/ja/new")
-@app.route("/ja/new/")
-def care_new():
-    resp = make_response(render_template("ja/index_new.html"))
-    resp.headers["Cache-Control"] = "no-store, max-age=0"
-    return resp
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/residents",
+        headers=supabase_headers(token),
+        params={"select": "id,name,address,notes", "is_active": "eq.true", "order": "name.asc"},
+        timeout=10,
+    )
+    if r.ok:
+        return jsonify({"residents": r.json()})
+    return jsonify({"error": r.text}), r.status_code
 
-@app.route("/ja/caree")
-@app.route("/ja/caree/")
-def care_caree():
-    """被介護者用のシンプルな入力画面"""
-    resp = make_response(render_template("ja/caree.html"))
-    resp.headers["Cache-Control"] = "no-store, max-age=0"
-    return resp
 
-# ── ルームAPI ──
-@app.route("/room/create", methods=["POST"])
-def room_create():
-    """介護士がルームを作成する"""
-    room_id = generate_room_id()
-    # 万一重複したら再生成
-    while room_id in rooms:
-        room_id = generate_room_id()
-    rooms[room_id] = {"log": [], "created_at": datetime.datetime.now().isoformat()}
-    return jsonify({"room_id": room_id})
+# ── AI日報生成 ──
+@app.route("/api/report/generate", methods=["POST"])
+def generate_report():
+    token = auth_token()
+    user = verify_token(token)
+    if not user:
+        return jsonify({"error": "認証が必要です"}), 401
 
-@app.route("/room/post", methods=["POST"])
-def room_post():
-    """介護士または被介護者がメッセージを送信する"""
+    if not client:
+        return jsonify({"error": "OpenAI APIキーが設定されていません"}), 500
+
     data = request.get_json(silent=True) or {}
-    room_id = data.get("room_id", "").strip()
-    text = data.get("text", "").strip()
-    role = data.get("role", "caree")  # デフォルトは被介護者
-    if not room_id or room_id not in rooms:
-        return jsonify({"error": "ルームが見つかりません。ルームIDを確認してください。"}), 404
-    if not text:
-        return jsonify({"error": "empty"}), 400
-    entry = {"role": role, "text": text, "time": datetime.datetime.now().strftime("%H:%M:%S")}
-    rooms[room_id]["log"].append(entry)
-    return jsonify({"status": "ok"})
+    voice_text = data.get("voice_text", "").strip()
+    resident_name = data.get("resident_name", "対象者")
 
-@app.route("/room/poll", methods=["GET"])
-def room_poll():
-    """介護士側が新しいメッセージを取得する"""
-    room_id = request.args.get("room_id", "").strip()
-    since = int(request.args.get("since", 0))
-    if not room_id or room_id not in rooms:
-        return jsonify({"error": "ルームが見つかりません"}), 404
-    log = rooms[room_id]["log"]
-    new_entries = log[since:]
-    return jsonify({"entries": new_entries, "total": len(log)})
+    if not voice_text:
+        return jsonify({"error": "音声テキストが空です"}), 400
 
-@app.route("/generate", methods=["POST"])
-def generate():
+    today = datetime.date.today().strftime("%Y年%m月%d日")
+
+    user_msg = (
+        f"以下は民生委員が{resident_name}さんを訪問した際の音声記録です。"
+        f"民生委員の訪問日報として使える文章を作成してください。\n\n"
+        f"【訪問日】{today}\n"
+        f"【音声記録】\n{voice_text}\n\n"
+        f"【日報の形式】\n"
+        f"以下の6項目を必ず出力してください。"
+        f"音声記録から読み取れる情報は具体的に記載し、情報がない項目は「記録なし」と記載してください。\n\n"
+        f"①安否確認：在宅確認・呼びかけへの応答・健康状態\n"
+        f"②生活状況：食事・睡眠・住環境・身の回りの清潔さ\n"
+        f"③相談・心配事：本人や家族からの相談・悩み・不安\n"
+        f"④対応・支援内容：今回行ったこと・声かけ・関係機関への連絡\n"
+        f"⑤要支援事項：行政や専門機関（包括支援センター等）への連絡が必要な事項\n"
+        f"⑥次回予定・特記事項：次回訪問予定日・引き継ぎ事項・気になること\n\n"
+        f"丁寧で簡潔な文体（敬体）で出力してください。"
+    )
+
     try:
-        data = request.get_json()
-        prompt = data.get("prompt", "").strip()
-        if not prompt:
-            return jsonify({"error": "empty"}), 400
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": "あなたは自分史のライティングアシスタントです。"},
-                {"role": "user", "content": "以下の文章を整えてください：\n" + prompt}
+                {"role": "system", "content": "あなたは民生委員の訪問活動を支援するアシスタントです。"},
+                {"role": "user", "content": user_msg},
             ],
-            max_tokens=800, temperature=0.2)
-        return jsonify({"text": response.choices[0].message.content.strip()})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/translate", methods=["POST"])
-def translate():
-    try:
-        data = request.get_json(silent=True) or {}
-        text = data.get("text", "").strip()
-        direction = data.get("direction", "ja-en")
-        parts = direction.split("-")
-        to_lang = parts[1] if len(parts) == 2 else "en"
-        lang_name = LANG_MAP.get(to_lang, "English")
-        if not text:
-            return jsonify({"error": "empty"}), 400
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": "Translate into " + lang_name + ". Output only the translated text."},
-                {"role": "user", "content": text}
-            ],
-            max_tokens=500, temperature=0.3)
-        return jsonify({"translated": response.choices[0].message.content.strip(), "lang": to_lang})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/tts", methods=["POST"])
-def tts():
-    try:
-        data = request.get_json(silent=True) or {}
-        text = data.get("text", "").strip()
-        lang = data.get("lang", "en")
-        if not text:
-            return jsonify({"error": "empty"}), 400
-        voice = {"ja": "shimmer", "en": "alloy", "fil": "nova", "id": "nova", "vi": "nova"}.get(lang, "alloy")
-        response = client.audio.speech.create(model="tts-1", voice=voice, input=text)
-        audio_bytes = io.BytesIO(response.content)
-        audio_bytes.seek(0)
-        return send_file(audio_bytes, mimetype="audio/mpeg", as_attachment=False)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/daily-report-inline", methods=["POST"])
-def daily_report_inline():
-    try:
-        data = request.get_json(silent=True) or {}
-        log = data.get("log", [])
-        if not log:
-            return jsonify({"error": "empty"}), 400
-        lines = []
-        for entry in log:
-            role = "介護士" if entry.get("role") == "caregiver" else "被介護者"
-            lines.append("[" + entry.get("time","") + "] " + role + "：" + entry.get("text",""))
-        log_text = "\n".join(lines)
-        today = datetime.date.today().strftime("%Y年%m月%d日")
-        sys_msg = "あなたは介護施設の日報作成を支援するアシスタントです。"
-        user_msg = (
-            "以下は介護現場での会話記録です。施設の日報として使える文章を作成してください。\n\n"
-            "【日付】" + today + "\n"
-            "【会話記録】\n" + log_text + "\n\n"
-            "【日報の形式】\n"
-            "- 冒頭に日付・担当者欄（担当者名は「（記入）」としておく）\n"
-            "- 「体調・バイタル」「食事・水分」「排泄」「活動・リハビリ」「会話・コミュニケーション」「特記事項」の6項目で構成\n"
-            "- 会話から読み取れる情報は具体的に記載し、不明な項目は「記録なし」と記載\n"
-            "- 丁寧で簡潔な文体で200〜300字程度にまとめる\n"
-            "- 日本語で出力する"
+            max_tokens=1000,
+            temperature=0.3,
         )
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": sys_msg},
-                {"role": "user", "content": user_msg}
-            ],
-            max_tokens=800, temperature=0.3)
         return jsonify({"report": response.choices[0].message.content.strip()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/download-log", methods=["POST"])
-def download_log():
-    try:
-        data = request.get_json(silent=True) or {}
-        content = data.get("content", "")
-        filename = data.get("filename", "log.txt")
-        if not content:
-            return jsonify({"error": "empty"}), 400
-        resp = Response(content.encode("utf-8"), mimetype="text/plain; charset=utf-8")
-        resp.headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(filename)
-        return resp
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-@app.route("/save", methods=["POST"])
-def save_history():
-    try:
-        data = request.get_json(silent=True) or {}
-        payload = {"user_name": data.get("user_name", "guest"), "prompt": data.get("prompt", ""), "response": data.get("response", "")}
-        r = requests.post(SUPABASE_REST, headers=SUPABASE_HEADERS, json=payload, timeout=10)
-        if r.status_code in (200, 201):
-            return jsonify({"status": "ok", "data": r.json()})
-        return jsonify({"status": "error", "detail": r.text}), r.status_code
-    except Exception as e:
-        return jsonify({"status": "error", "detail": str(e)}), 500
+# ── 日報をSupabaseに保存 ──
+@app.route("/api/report/save", methods=["POST"])
+def save_report():
+    token = auth_token()
+    user = verify_token(token)
+    if not user:
+        return jsonify({"error": "認証が必要です"}), 401
 
-@app.route("/get", methods=["GET"])
-def get_histories():
-    try:
-        params = {"select": "*", "order": "created_at.desc", "limit": 20}
-        r = requests.get(SUPABASE_REST, headers=SUPABASE_HEADERS, params=params, timeout=10)
-        if r.ok:
-            return jsonify({"status": "ok", "data": r.json()})
-        return jsonify({"status": "error", "detail": r.text}), r.status_code
-    except Exception as e:
-        return jsonify({"status": "error", "detail": str(e)}), 500
+    data = request.get_json(silent=True) or {}
+    payload = {
+        "resident_id": data.get("resident_id"),
+        "commissioner_id": user["id"],
+        "visited_at": data.get("visited_at", datetime.date.today().isoformat()),
+        "raw_voice_text": data.get("voice_text", ""),
+        "full_report": data.get("report", ""),
+    }
+
+    r = requests.post(
+        f"{SUPABASE_URL}/rest/v1/visit_reports",
+        headers={**supabase_headers(token), "Prefer": "return=representation"},
+        json=payload,
+        timeout=10,
+    )
+    if r.ok:
+        return jsonify({"status": "ok"})
+    return jsonify({"error": r.text}), r.status_code
+
+
+# ── 日報テキストダウンロード ──
+@app.route("/api/download", methods=["POST"])
+def download_report():
+    data = request.get_json(silent=True) or {}
+    content = data.get("content", "")
+    filename = data.get("filename", "日報.txt")
+    if not content:
+        return jsonify({"error": "empty"}), 400
+    resp = Response(content.encode("utf-8"), mimetype="text/plain; charset=utf-8")
+    resp.headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(filename)
+    return resp
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
