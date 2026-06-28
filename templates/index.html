@@ -80,11 +80,48 @@
         <div class="mic-status" id="mic-status"></div>
       </div>
 
+      <!-- テンプレート対話 -->
+      <div class="template-section">
+        <div class="template-header">
+          <span class="template-title">📋 テンプレート入力</span>
+          <span class="template-hint">タップで追記</span>
+        </div>
+        <div class="template-tabs">
+          <button class="tmpl-tab active" onclick="switchTab('anzen', this)">安否確認</button>
+          <button class="tmpl-tab" onclick="switchTab('taichou', this)">体調確認</button>
+          <button class="tmpl-tab" onclick="switchTab('seikatsu', this)">生活状況</button>
+        </div>
+        <div id="tmpl-anzen" class="template-items">
+          <button class="tmpl-item" onclick="appendTemplate('在宅確認済み')">在宅確認済み</button>
+          <button class="tmpl-item" onclick="appendTemplate('応答あり・元気な様子')">応答あり・元気な様子</button>
+          <button class="tmpl-item" onclick="appendTemplate('応答あったが体調不良気味')">応答あったが体調不良気味</button>
+          <button class="tmpl-item" onclick="appendTemplate('応答なし・後日再訪予定')">応答なし・後日再訪予定</button>
+          <button class="tmpl-item" onclick="appendTemplate('緊急連絡が必要な状態')">緊急連絡が必要な状態</button>
+        </div>
+        <div id="tmpl-taichou" class="template-items" style="display:none;">
+          <button class="tmpl-item" onclick="appendTemplate('体調良好')">体調良好</button>
+          <button class="tmpl-item" onclick="appendTemplate('食欲あり・食事できている')">食欲あり・食事できている</button>
+          <button class="tmpl-item" onclick="appendTemplate('軽い体調不良（頭痛・疲労感）')">軽い体調不良（頭痛・疲労感）</button>
+          <button class="tmpl-item" onclick="appendTemplate('発熱・体調悪化あり')">発熱・体調悪化あり</button>
+          <button class="tmpl-item" onclick="appendTemplate('通院・服薬継続中')">通院・服薬継続中</button>
+        </div>
+        <div id="tmpl-seikatsu" class="template-items" style="display:none;">
+          <button class="tmpl-item" onclick="appendTemplate('自立して生活できている')">自立して生活できている</button>
+          <button class="tmpl-item" onclick="appendTemplate('買い物・家事に支障なし')">買い物・家事に支障なし</button>
+          <button class="tmpl-item" onclick="appendTemplate('買い物・家事に困っている')">買い物・家事に困っている</button>
+          <button class="tmpl-item" onclick="appendTemplate('話し相手・孤独感あり')">話し相手・孤独感あり</button>
+          <button class="tmpl-item" onclick="appendTemplate('介護サービス利用中')">介護サービス利用中</button>
+        </div>
+      </div>
+
       <!-- 録音テキスト表示 -->
       <div class="voice-card" id="voice-card" style="display:none;">
         <div class="voice-card-header">
           <span class="voice-card-title">📝 録音内容</span>
-          <button class="clear-btn" onclick="clearVoice()">クリア</button>
+          <div class="voice-card-actions">
+            <button class="tts-btn" id="tts-voice-btn" onclick="speakVoiceText()">🔊 読み上げ</button>
+            <button class="clear-btn" onclick="clearVoice()">クリア</button>
+          </div>
         </div>
         <textarea id="voice-text" class="voice-textarea" placeholder="録音内容がここに表示されます。手入力で修正もできます。"></textarea>
       </div>
@@ -102,7 +139,10 @@
       </div>
 
       <div class="report-title-row">
-        <h2>📋 訪問日報</h2>
+        <div class="report-title-line">
+          <h2>📋 訪問日報</h2>
+          <button class="tts-btn" id="tts-report-btn" onclick="speakReport()">🔊 読み上げ</button>
+        </div>
         <div class="report-meta" id="report-meta"></div>
       </div>
 

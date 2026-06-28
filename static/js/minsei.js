@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── 画面切り替え ──
 function showScreen(name) {
+  stopTTS();
   document.querySelectorAll('.screen').forEach(s => s.style.display = 'none');
   document.getElementById('screen-' + name).style.display = 'block';
 }
@@ -385,6 +386,75 @@ async function copyReport() {
   } catch (err) {
     alert('コピーに失敗しました。手動でコピーしてください。');
   }
+}
+
+// ── テンプレート対話 ──
+function switchTab(tabId, btn) {
+  document.querySelectorAll('.tmpl-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.template-items').forEach(p => p.style.display = 'none');
+  btn.classList.add('active');
+  document.getElementById('tmpl-' + tabId).style.display = 'flex';
+}
+
+function appendTemplate(text) {
+  if (accumulatedText && !accumulatedText.endsWith('。') && !accumulatedText.endsWith('\n')) {
+    accumulatedText += '。';
+  }
+  accumulatedText += text + '。';
+  const textarea = document.getElementById('voice-text');
+  textarea.value = accumulatedText;
+  document.getElementById('voice-card').style.display = 'block';
+  document.getElementById('generate-btn').style.display = 'block';
+  document.getElementById('mic-status').textContent = '✅ テンプレートを追加しました。';
+}
+
+// ── 音声読み上げ ──
+let ttsActive = false;
+let ttsSpeakingBtn = null;
+
+function stopTTS() {
+  window.speechSynthesis.cancel();
+  ttsActive = false;
+  if (ttsSpeakingBtn) {
+    ttsSpeakingBtn.textContent = '🔊 読み上げ';
+    ttsSpeakingBtn.classList.remove('speaking');
+    ttsSpeakingBtn = null;
+  }
+}
+
+function speak(text, btn) {
+  if (ttsActive) {
+    const wasSameBtn = (ttsSpeakingBtn === btn);
+    stopTTS();
+    if (wasSameBtn) return;
+  }
+  if (!text.trim()) {
+    alert('読み上げる内容がありません。');
+    return;
+  }
+  if (!window.speechSynthesis) {
+    alert('このブラウザは音声読み上げに対応していません。');
+    return;
+  }
+  ttsSpeakingBtn = btn;
+  ttsActive = true;
+  btn.textContent = '⏹ 停止';
+  btn.classList.add('speaking');
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'ja-JP';
+  utterance.rate = 0.85;
+  utterance.onend = stopTTS;
+  utterance.onerror = stopTTS;
+  window.speechSynthesis.speak(utterance);
+}
+
+function speakVoiceText() {
+  speak(document.getElementById('voice-text').value, document.getElementById('tts-voice-btn'));
+}
+
+function speakReport() {
+  speak(document.getElementById('report-content').value, document.getElementById('tts-report-btn'));
 }
 
 function escHtml(text) {
