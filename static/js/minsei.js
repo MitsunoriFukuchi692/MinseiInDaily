@@ -70,6 +70,23 @@ async function doLogin() {
   }
 }
 
+// ── パスワードリセット ──
+async function doPasswordReset() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) {
+    alert('メールアドレスを入力してからクリックしてください。');
+    return;
+  }
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/'
+  });
+  if (error) {
+    alert('エラーが発生しました: ' + error.message);
+  } else {
+    alert('パスワードリセットメールを送信しました。メールを確認してください。');
+  }
+}
+
 // Enterキーでログイン
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('login-password').addEventListener('keydown', e => {
