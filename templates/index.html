@@ -47,6 +47,24 @@
       </div>
     </div>
 
+    <!-- ======== パスワード変更画面 ======== -->
+    <div id="screen-password-reset" class="screen" style="display:none;">
+      <div class="login-card">
+        <div class="login-icon">🔑</div>
+        <h2 class="login-title">パスワード変更</h2>
+        <p class="login-sub">新しいパスワードを入力してください</p>
+        <div class="form-group">
+          <label class="form-label">新しいパスワード</label>
+          <input type="password" id="new-password" class="form-input" placeholder="6文字以上" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">確認用パスワード</label>
+          <input type="password" id="confirm-password" class="form-input" placeholder="もう一度入力" />
+        </div>
+        <button class="big-btn green-btn" onclick="doUpdatePassword()">パスワードを変更する</button>
+      </div>
+    </div>
+
     <!-- ======== 画面2: 担当住民リスト ======== -->
     <div id="screen-residents" class="screen" style="display:none;">
       <div class="section-header">

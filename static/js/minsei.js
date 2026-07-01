@@ -22,6 +22,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    // パスワードリセットリンクからの遷移を検知
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        showScreen('password-reset');
+      }
+    });
+
     // 既存セッションを確認
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
@@ -67,6 +74,28 @@ async function doLogin() {
     errEl.style.display = 'block';
     btn.textContent = 'ログイン';
     btn.disabled = false;
+  }
+}
+
+// ── パスワード更新 ──
+async function doUpdatePassword() {
+  const newPassword = document.getElementById('new-password').value.trim();
+  const confirmPassword = document.getElementById('confirm-password').value.trim();
+  if (!newPassword || newPassword.length < 6) {
+    alert('パスワードは6文字以上で入力してください。');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    alert('パスワードが一致しません。');
+    return;
+  }
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) {
+    alert('エラー: ' + error.message);
+  } else {
+    alert('パスワードを変更しました。再度ログインしてください。');
+    await supabase.auth.signOut();
+    showScreen('login');
   }
 }
 
