@@ -94,10 +94,19 @@ def auth_token():
     return request.headers.get("Authorization", "").replace("Bearer ", "").strip()
 
 
+class SupabaseUnavailable(Exception):
+    """Supabaseへの問い合わせ自体が失敗した（通信断・タイムアウト・サーバエラー）。
+
+    「担当外の住民」と区別するために用意している。混同すると、通信の一時的な
+    失敗を権限エラーとして表示してしまい原因の切り分けができなくなる。
+    """
+
+
 def fetch_own_resident(token, resident_id):
     """自分が担当する住民かを確認して住民情報を返す。担当外・不存在なら None。
 
     ユーザートークンで問い合わせるため、RLS が担当外の行を除外する。
+    通信に失敗した場合は SupabaseUnavailable を送出する（Noneと区別する）。
     """
     if not resident_id:
         return None
@@ -108,11 +117,15 @@ def fetch_own_resident(token, resident_id):
             params={"select": "id,name", "id": f"eq.{resident_id}"},
             timeout=10,
         )
-        if r.ok:
-            rows = r.json()
-            return rows[0] if rows else None
-    except Exception:
-        pass
+    except Exception as e:
+        raise SupabaseUnavailable(str(e))
+
+    if r.ok:
+        rows = r.json()
+        return rows[0] if rows else None
+    # 4xx は不正なIDなど「見つからない」側、5xx はサーバ側の障害として扱う
+    if r.status_code >= 500:
+        raise SupabaseUnavailable(f"status {r.status_code}")
     return None
 
 
@@ -179,7 +192,10 @@ def generate_report():
     if not voice_text:
         return jsonify({"error": "音声テキストが空です"}), 400
 
-    resident = fetch_own_resident(token, resident_id)
+    try:
+        resident = fetch_own_resident(token, resident_id)
+    except SupabaseUnavailable:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
     if not resident:
         return jsonify({"error": "担当する住民が見つかりません"}), 403
 
@@ -229,8 +245,11 @@ def save_report():
 
     # 他の民生委員が担当する住民に日報を紐づけられないよう検証する
     resident_id = data.get("resident_id")
-    if not fetch_own_resident(token, resident_id):
-        return jsonify({"error": "担当する住民が見つかりません"}), 403
+    try:
+        if not fetch_own_resident(token, resident_id):
+            return jsonify({"error": "担当する住民が見つかりません"}), 403
+    except SupabaseUnavailable:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
 
     payload = {
         "resident_id": resident_id,
