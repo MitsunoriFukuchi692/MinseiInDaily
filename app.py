@@ -12,9 +12,56 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-client = OpenAI(api_key=OPENAI_API_KEY, http_client=httpx.Client(timeout=30)) if OPENAI_API_KEY else None
-MODEL = "gpt-4o-mini"
+
+# ── LLMプロバイダ設定 ──
+# LLM_PROVIDER で切り替える（openai / gemini / vertex）。
+# 自治体案件では ISMAP 登録済みの vertex（東京リージョン）を使うこと。
+# Gemini API の無料枠は入力が学習に利用される可能性があるため本番では使用禁止。
+LLM_PROVIDERS = {
+    "openai": {
+        "key_env": "OPENAI_API_KEY",
+        "base_url": None,
+        "model": "gpt-4o-mini",
+    },
+    "gemini": {
+        "key_env": "GEMINI_API_KEY",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "model": "gemini-2.5-flash",
+    },
+}
+
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai").lower()
+_provider = LLM_PROVIDERS.get(LLM_PROVIDER, LLM_PROVIDERS["openai"])
+LLM_API_KEY = os.environ.get(_provider["key_env"], "")
+MODEL = os.environ.get("LLM_MODEL", _provider["model"])
+
+client = (
+    OpenAI(
+        api_key=LLM_API_KEY,
+        base_url=_provider["base_url"],
+        http_client=httpx.Client(timeout=30),
+    )
+    if LLM_API_KEY
+    else None
+)
+
+
+def generate_text(system_prompt, user_prompt, max_tokens=1000, temperature=0.3):
+    """LLMにテキスト生成させる。プロバイダの違いはここで吸収する。"""
+    if not client:
+        raise RuntimeError(
+            f"{_provider['key_env']} が設定されていません（LLM_PROVIDER={LLM_PROVIDER}）"
+        )
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    return response.choices[0].message.content.strip()
 
 
 def supabase_headers(user_token=None):
@@ -45,6 +92,46 @@ def verify_token(token):
 def auth_token():
     """リクエストヘッダーからトークンを取得"""
     return request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+
+
+def fetch_own_resident(token, resident_id):
+    """自分が担当する住民かを確認して住民情報を返す。担当外・不存在なら None。
+
+    ユーザートークンで問い合わせるため、RLS が担当外の行を除外する。
+    """
+    if not resident_id:
+        return None
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/residents",
+            headers=supabase_headers(token),
+            params={"select": "id,name", "id": f"eq.{resident_id}"},
+            timeout=10,
+        )
+        if r.ok:
+            rows = r.json()
+            return rows[0] if rows else None
+    except Exception:
+        pass
+    return None
+
+
+def mask_name(text, name):
+    """音声記録から対象者の氏名を伏せる（AI事業者へ氏名を送らないため）。
+
+    「田中 花子」なら フルネーム・「田中花子」・「田中」・「花子」を置換する。
+    誤爆を避けるため1文字の姓名は対象外。
+    """
+    if not text or not name:
+        return text
+    parts = [p for p in name.replace("　", " ").split(" ") if p]
+    # 姓名の区切りは半角/全角スペース・詰めの表記ゆれがあるため全て候補にする
+    # 長い表記から順に置換する（「田中花子」を「田中」で先に壊さないため）
+    candidates = [name, "".join(parts), " ".join(parts), "　".join(parts)] + parts
+    for c in sorted(set(candidates), key=len, reverse=True):
+        if len(c) >= 2:
+            text = text.replace(c, "対象者")
+    return text
 
 
 # ── メイン画面 ──
@@ -83,19 +170,26 @@ def generate_report():
         return jsonify({"error": "認証が必要です"}), 401
 
     if not client:
-        return jsonify({"error": "OpenAI APIキーが設定されていません"}), 500
+        return jsonify({"error": "AIのAPIキーが設定されていません"}), 500
 
     data = request.get_json(silent=True) or {}
     voice_text = data.get("voice_text", "").strip()
-    resident_name = data.get("resident_name", "対象者")
+    resident_id = data.get("resident_id")
 
     if not voice_text:
         return jsonify({"error": "音声テキストが空です"}), 400
 
+    resident = fetch_own_resident(token, resident_id)
+    if not resident:
+        return jsonify({"error": "担当する住民が見つかりません"}), 403
+
+    # 氏名は外部のAIへ送らない。音声記録に含まれる氏名もここで伏せる。
+    voice_text = mask_name(voice_text, resident.get("name"))
+
     today = datetime.date.today().strftime("%Y年%m月%d日")
 
     user_msg = (
-        f"以下は民生委員が{resident_name}さんを訪問した際の音声記録です。"
+        f"以下は民生委員が対象者を訪問した際の音声記録です。"
         f"民生委員の訪問日報として使える文章を作成してください。\n\n"
         f"【訪問日】{today}\n"
         f"【音声記録】\n{voice_text}\n\n"
@@ -112,16 +206,13 @@ def generate_report():
     )
 
     try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": "あなたは民生委員の訪問活動を支援するアシスタントです。"},
-                {"role": "user", "content": user_msg},
-            ],
+        report = generate_text(
+            "あなたは民生委員の訪問活動を支援するアシスタントです。",
+            user_msg,
             max_tokens=1000,
             temperature=0.3,
         )
-        return jsonify({"report": response.choices[0].message.content.strip()})
+        return jsonify({"report": report})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -135,8 +226,14 @@ def save_report():
         return jsonify({"error": "認証が必要です"}), 401
 
     data = request.get_json(silent=True) or {}
+
+    # 他の民生委員が担当する住民に日報を紐づけられないよう検証する
+    resident_id = data.get("resident_id")
+    if not fetch_own_resident(token, resident_id):
+        return jsonify({"error": "担当する住民が見つかりません"}), 403
+
     payload = {
-        "resident_id": data.get("resident_id"),
+        "resident_id": resident_id,
         "commissioner_id": user["id"],
         "visited_at": data.get("visited_at", datetime.date.today().isoformat()),
         "raw_voice_text": data.get("voice_text", ""),

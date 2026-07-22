@@ -339,7 +339,7 @@ async function generateReport() {
       },
       body: JSON.stringify({
         voice_text: voiceText,
-        resident_name: currentResident.name,
+        resident_id: currentResident.id,
       }),
     });
     const data = await res.json();
