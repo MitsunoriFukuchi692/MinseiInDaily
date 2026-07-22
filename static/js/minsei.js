@@ -434,6 +434,62 @@ async function copyReport() {
   }
 }
 
+// ── 過去の日報一覧 ──
+async function showHistory() {
+  if (!currentResident) return;
+
+  showScreen('history');
+  document.getElementById('history-resident-name').textContent = currentResident.name + ' さん';
+
+  const loadingEl = document.getElementById('history-loading');
+  const listEl = document.getElementById('history-list');
+  const emptyEl = document.getElementById('history-empty');
+
+  loadingEl.style.display = 'flex';
+  listEl.innerHTML = '';
+  emptyEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/reports?resident_id=' + encodeURIComponent(currentResident.id), {
+      headers: { 'Authorization': 'Bearer ' + currentToken }
+    });
+    const data = await res.json();
+    loadingEl.style.display = 'none';
+    if (!res.ok) throw new Error(data.error || 'エラーが発生しました');
+
+    if (!data.reports || data.reports.length === 0) {
+      emptyEl.textContent = '保存された日報はまだありません。';
+      emptyEl.style.display = 'block';
+      return;
+    }
+
+    data.reports.forEach(rep => {
+      const visited = new Date(rep.visited_at + 'T00:00:00')
+        .toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      const card = document.createElement('div');
+      card.className = 'history-card';
+      card.innerHTML = `
+        <div class="history-head">
+          <span class="history-date">🗓 ${escHtml(visited)}</span>
+          <span class="history-toggle">▼</span>
+        </div>
+        <div class="history-body">${escHtml(rep.full_report || '')}</div>
+      `;
+      // 見出しをタップで開閉（一覧では畳んでおく）
+      card.querySelector('.history-head').addEventListener('click', () => {
+        const open = card.classList.toggle('open');
+        card.querySelector('.history-toggle').textContent = open ? '▲' : '▼';
+      });
+      listEl.appendChild(card);
+    });
+  } catch (err) {
+    loadingEl.style.display = 'none';
+    emptyEl.textContent = '読み込みに失敗しました: ' + err.message;
+    emptyEl.style.display = 'block';
+  }
+}
+
 // ── テンプレート対話 ──
 function switchTab(tabId, btn) {
   document.querySelectorAll('.tmpl-tab').forEach(t => t.classList.remove('active'));

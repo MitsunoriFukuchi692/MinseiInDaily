@@ -174,6 +174,41 @@ def get_residents():
     return jsonify({"error": r.text}), r.status_code
 
 
+# ── 過去の日報一覧取得 ──
+@app.route("/api/reports", methods=["GET"])
+def get_reports():
+    token = auth_token()
+    user = verify_token(token)
+    if not user:
+        return jsonify({"error": "認証が必要です"}), 401
+
+    resident_id = request.args.get("resident_id")
+    try:
+        if not fetch_own_resident(token, resident_id):
+            return jsonify({"error": "担当する住民が見つかりません"}), 403
+    except SupabaseUnavailable:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
+
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/visit_reports",
+            headers=supabase_headers(token),
+            params={
+                "select": "id,visited_at,full_report,created_at",
+                "resident_id": f"eq.{resident_id}",
+                "order": "visited_at.desc,created_at.desc",
+                "limit": "50",
+            },
+            timeout=10,
+        )
+    except Exception:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
+
+    if r.ok:
+        return jsonify({"reports": r.json()})
+    return jsonify({"error": r.text}), r.status_code
+
+
 # ── AI日報生成 ──
 @app.route("/api/report/generate", methods=["POST"])
 def generate_report():

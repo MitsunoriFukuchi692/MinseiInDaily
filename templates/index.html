@@ -92,6 +92,10 @@
       <div class="resident-badge" id="recording-resident-name"></div>
       <div class="visit-date" id="recording-date"></div>
 
+      <div class="history-link-row">
+        <button class="history-link-btn" onclick="showHistory()">📋 過去の日報を見る</button>
+      </div>
+
       <!-- 大型マイクボタン -->
       <div class="mic-area">
         <button class="mic-big-btn" id="mic-btn" onclick="toggleMic()">
@@ -189,6 +193,28 @@
       </div>
 
       <div id="save-status" class="save-status" style="display:none;"></div>
+    </div>
+
+    <!-- ======== 画面5: 過去の日報一覧 ======== -->
+    <div id="screen-history" class="screen" style="display:none;">
+      <div class="back-row">
+        <button class="back-btn" onclick="showScreen('recording')">← 録音画面へ戻る</button>
+      </div>
+
+      <div class="section-header">
+        <h2>📋 過去の日報</h2>
+        <p class="section-sub" id="history-resident-name"></p>
+      </div>
+
+      <div id="history-loading" class="loading-msg" style="display:none;">
+        <span class="spinner"></span> 読み込み中...
+      </div>
+
+      <div id="history-list"></div>
+
+      <div id="history-empty" class="empty-msg" style="display:none;">
+        保存された日報はまだありません。
+      </div>
     </div>
 
   </main>
