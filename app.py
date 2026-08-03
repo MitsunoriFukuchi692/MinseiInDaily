@@ -13,6 +13,11 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
+# ── 閲覧数カウンター設定 ──
+# 他サイトから叩かれるため、集計対象は決め打ちの許可リストのみに限定する
+# （任意の site 名で行が量産されるのを防ぐ）。
+COUNTER_ALLOWED_SITES = {"120gakkai.com"}
+
 # ── LLMプロバイダ設定 ──
 # LLM_PROVIDER で切り替える（openai / gemini / vertex）。
 # 自治体案件では ISMAP 登録済みの vertex（東京リージョン）を使うこと。
@@ -316,6 +321,48 @@ def download_report():
     resp = Response(content.encode("utf-8"), mimetype="text/plain; charset=utf-8")
     resp.headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(filename)
     return resp
+
+
+# ── 閲覧数カウンター ──
+# 120学会HPなど、静的サイトのTOPに「訪問者数」を表示するための共有API。
+# 別オリジン（120gakkai.com）から呼ばれるため CORS を許可する。
+@app.after_request
+def _counter_cors(resp):
+    if request.path.startswith("/api/counter/"):
+        origin = request.headers.get("Origin")
+        if origin:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Vary"] = "Origin"
+            resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return resp
+
+
+@app.route("/api/counter/hit", methods=["POST", "OPTIONS"])
+def counter_hit():
+    # ブラウザのプリフライト（OPTIONS）にはボディなしで応答する
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    data = request.get_json(silent=True) or {}
+    site = (data.get("site") or "").strip()
+    if site not in COUNTER_ALLOWED_SITES:
+        return jsonify({"error": "unknown site"}), 400
+
+    # Postgres 側の関数で原子的に +1 して新しい値を受け取る
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/increment_site_counter",
+            headers=supabase_headers(),
+            json={"p_site": site},
+            timeout=10,
+        )
+    except Exception:
+        return jsonify({"error": "通信に失敗しました"}), 503
+
+    if r.ok:
+        return jsonify({"count": r.json()})
+    return jsonify({"error": r.text}), r.status_code
 
 
 if __name__ == "__main__":
