@@ -328,14 +328,36 @@ def download_report():
 # 別オリジン（120gakkai.com）から呼ばれるため CORS を許可する。
 @app.after_request
 def _counter_cors(resp):
-    if request.path.startswith("/api/counter/"):
+    if request.path.startswith("/api/counter"):
         origin = request.headers.get("Origin")
         if origin:
             resp.headers["Access-Control-Allow-Origin"] = origin
             resp.headers["Vary"] = "Origin"
-            resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
             resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return resp
+
+
+@app.route("/api/counter", methods=["GET"])
+def counter_get():
+    """カウントを増やさずに現在値だけ返す（サイト所有者が自分の閲覧を数え
+    ないようにする用途。表示はするがインクリメントはしない）。"""
+    site = (request.args.get("site") or "").strip()
+    if site not in COUNTER_ALLOWED_SITES:
+        return jsonify({"error": "unknown site"}), 400
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/site_counters",
+            headers=supabase_headers(),
+            params={"select": "count", "site": f"eq.{site}"},
+            timeout=10,
+        )
+    except Exception:
+        return jsonify({"error": "通信に失敗しました"}), 503
+    if r.ok:
+        rows = r.json()
+        return jsonify({"count": rows[0]["count"] if rows else 0})
+    return jsonify({"error": r.text}), r.status_code
 
 
 @app.route("/api/counter/hit", methods=["POST", "OPTIONS"])
