@@ -16,7 +16,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 # ── 閲覧数カウンター設定 ──
 # 他サイトから叩かれるため、集計対象は決め打ちの許可リストのみに限定する
 # （任意の site 名で行が量産されるのを防ぐ）。
-COUNTER_ALLOWED_SITES = {"120gakkai.com"}
+COUNTER_ALLOWED_SITES = {"120gakkai.com", "robostudy.jp"}
 
 # ── LLMプロバイダ設定 ──
 # LLM_PROVIDER で切り替える（openai / gemini / vertex）。
