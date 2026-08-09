@@ -127,6 +127,20 @@ function onLoginSuccess() {
   document.getElementById('logout-btn').style.display = 'block';
   showScreen('residents');
   loadResidents();
+  showUpdateBanner();
+}
+
+// ── 新機能お知らせバナー ──
+const UPDATE_BANNER_KEY = 'minsei_update_banner_2026_08_dismissed';
+
+function showUpdateBanner() {
+  if (localStorage.getItem(UPDATE_BANNER_KEY)) return;
+  document.getElementById('update-banner').style.display = 'flex';
+}
+
+function dismissUpdateBanner() {
+  localStorage.setItem(UPDATE_BANNER_KEY, '1');
+  document.getElementById('update-banner').style.display = 'none';
 }
 
 // ── ログアウト ──
