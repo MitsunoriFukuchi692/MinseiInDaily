@@ -177,16 +177,45 @@ async function loadResidents() {
         <div class="resident-info">
           <div class="resident-name">${escHtml(r.name)} さん</div>
           <div class="resident-address">${escHtml(r.address || '')}</div>
+          <div class="resident-visit-badge" id="visit-badge-${escHtml(r.id)}"></div>
         </div>
         <div class="resident-arrow">›</div>
       `;
       card.addEventListener('click', () => selectResident(r));
       listEl.appendChild(card);
     });
+
+    loadVisitBadges();
   } catch (err) {
     loadingEl.style.display = 'none';
     emptyEl.textContent = '読み込みに失敗しました。再読み込みしてください。';
     emptyEl.style.display = 'block';
+  }
+}
+
+// ── 未訪問日数バッジ ──
+const UNVISITED_WARN_DAYS = 14;
+
+async function loadVisitBadges() {
+  try {
+    const res = await fetch('/api/insights/overview', {
+      headers: { 'Authorization': 'Bearer ' + currentToken }
+    });
+    const data = await res.json();
+    if (!res.ok || !data.insights) return;
+
+    data.insights.forEach(ins => {
+      const el = document.getElementById('visit-badge-' + ins.resident_id);
+      if (!el) return;
+      if (ins.days_since >= UNVISITED_WARN_DAYS) {
+        el.textContent = `⚠️ ${ins.days_since}日未訪問`;
+        el.classList.add('warn');
+      } else {
+        el.textContent = `最終訪問：${ins.days_since}日前`;
+      }
+    });
+  } catch (err) {
+    // バッジは補助情報なので、失敗しても一覧表示自体は継続する
   }
 }
 
@@ -448,6 +477,7 @@ async function showHistory() {
   loadingEl.style.display = 'flex';
   listEl.innerHTML = '';
   emptyEl.style.display = 'none';
+  document.getElementById('reflection-card').style.display = 'none';
 
   try {
     const res = await fetch('/api/reports?resident_id=' + encodeURIComponent(currentResident.id), {
@@ -488,6 +518,92 @@ async function showHistory() {
     emptyEl.textContent = '読み込みに失敗しました: ' + err.message;
     emptyEl.style.display = 'block';
   }
+}
+
+// ── AI振り返り ──
+async function showReflection() {
+  if (!currentResident) return;
+
+  const cardEl = document.getElementById('reflection-card');
+  const bodyEl = document.getElementById('reflection-body');
+  cardEl.style.display = 'block';
+  bodyEl.textContent = '読み込み中...';
+
+  try {
+    const res = await fetch('/api/insights/reflect', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + currentToken,
+      },
+      body: JSON.stringify({ resident_id: currentResident.id }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'エラーが発生しました');
+    bodyEl.textContent = data.reflection;
+  } catch (err) {
+    bodyEl.textContent = '取得に失敗しました: ' + err.message;
+  }
+}
+
+// ── 引き継ぎシート ──
+async function showHandover() {
+  if (!currentResident) return;
+
+  showScreen('handover');
+  document.getElementById('handover-resident-name').textContent = currentResident.name + ' さん';
+  document.getElementById('handover-resident-address').textContent = currentResident.address || '';
+
+  const loadingEl = document.getElementById('handover-loading');
+  const summaryEl = document.getElementById('handover-summary');
+  const listEl = document.getElementById('handover-list');
+
+  loadingEl.style.display = 'flex';
+  summaryEl.textContent = '';
+  listEl.innerHTML = '';
+
+  try {
+    const [summaryRes, reportsRes] = await Promise.all([
+      fetch('/api/handover/summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + currentToken,
+        },
+        body: JSON.stringify({ resident_id: currentResident.id }),
+      }),
+      fetch('/api/reports?resident_id=' + encodeURIComponent(currentResident.id), {
+        headers: { 'Authorization': 'Bearer ' + currentToken }
+      }),
+    ]);
+    const summaryData = await summaryRes.json();
+    const reportsData = await reportsRes.json();
+    loadingEl.style.display = 'none';
+
+    if (!summaryRes.ok) throw new Error(summaryData.error || 'エラーが発生しました');
+    if (!reportsRes.ok) throw new Error(reportsData.error || 'エラーが発生しました');
+
+    summaryEl.textContent = summaryData.summary;
+
+    (reportsData.reports || []).slice().reverse().forEach(rep => {
+      const visited = new Date(rep.visited_at + 'T00:00:00')
+        .toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+      const item = document.createElement('div');
+      item.className = 'handover-item';
+      item.innerHTML = `
+        <div class="handover-item-date">🗓 ${escHtml(visited)}</div>
+        <div class="handover-item-body">${escHtml(rep.full_report || '')}</div>
+      `;
+      listEl.appendChild(item);
+    });
+  } catch (err) {
+    loadingEl.style.display = 'none';
+    summaryEl.textContent = '読み込みに失敗しました: ' + err.message;
+  }
+}
+
+function printHandover() {
+  window.print();
 }
 
 // ── テンプレート対話 ──

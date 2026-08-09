@@ -566,3 +566,49 @@ body {
   padding-top: 14px;
 }
 .history-card.open .history-body { display: block; }
+
+/* === 未訪問バッジ === */
+.resident-visit-badge {
+  font-size: 0.78rem;
+  color: #888;
+  margin-top: 4px;
+}
+.resident-visit-badge.warn {
+  color: #c62828;
+  font-weight: 700;
+}
+
+/* === AI振り返り === */
+.reflection-card {
+  background: #f3e9ff;
+  border: 1px solid #d1c4e9;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.reflection-title { font-size: 0.9rem; font-weight: 700; color: #4a148c; margin-bottom: 8px; }
+.reflection-body { font-size: 0.93rem; line-height: 1.85; color: #1a2e1a; white-space: pre-wrap; }
+
+/* === 引き継ぎシート === */
+.handover-sheet { background: #fff; border-radius: 14px; padding: 24px; box-shadow: 0 1px 6px rgba(0,0,0,0.07); }
+.handover-summary-card {
+  background: #f3e9ff;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 16px 0 20px;
+}
+.handover-summary-title { font-size: 0.85rem; font-weight: 700; color: #4a148c; margin-bottom: 6px; }
+.handover-summary-body { font-size: 0.93rem; line-height: 1.85; white-space: pre-wrap; }
+.handover-item { border-top: 1px solid #ede7f6; padding: 14px 0; }
+.handover-item-date { font-size: 0.9rem; font-weight: 600; color: #4a148c; margin-bottom: 6px; }
+.handover-item-body { font-size: 0.9rem; line-height: 1.8; white-space: pre-wrap; }
+
+@media print {
+  .no-print,
+  #logout-btn,
+  #screen-residents,
+  #screen-recording,
+  #screen-report,
+  #screen-history { display: none !important; }
+  .handover-sheet { box-shadow: none; padding: 0; }
+}

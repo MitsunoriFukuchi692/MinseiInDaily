@@ -310,6 +310,176 @@ def save_report():
     return jsonify({"error": r.text}), r.status_code
 
 
+# ── 担当住民ごとの最終訪問日・未訪問日数 ──
+@app.route("/api/insights/overview", methods=["GET"])
+def insights_overview():
+    token = auth_token()
+    user = verify_token(token)
+    if not user:
+        return jsonify({"error": "認証が必要です"}), 401
+
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/visit_reports",
+            headers=supabase_headers(token),
+            params={
+                "select": "resident_id,visited_at",
+                "order": "resident_id.asc,visited_at.desc",
+            },
+            timeout=10,
+        )
+    except Exception:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
+
+    if not r.ok:
+        return jsonify({"error": r.text}), r.status_code
+
+    # resident_idごとに先頭（最新visited_at）だけ残す
+    latest = {}
+    for row in r.json():
+        rid = row["resident_id"]
+        if rid not in latest:
+            latest[rid] = row["visited_at"]
+
+    today = datetime.date.today()
+    insights = []
+    for rid, visited_at in latest.items():
+        days_since = (today - datetime.date.fromisoformat(visited_at)).days
+        insights.append({"resident_id": rid, "last_visited_at": visited_at, "days_since": days_since})
+
+    return jsonify({"insights": insights})
+
+
+# ── AIによる振り返りメモ ──
+@app.route("/api/insights/reflect", methods=["POST"])
+def insights_reflect():
+    token = auth_token()
+    user = verify_token(token)
+    if not user:
+        return jsonify({"error": "認証が必要です"}), 401
+
+    if not client:
+        return jsonify({"error": "AIのAPIキーが設定されていません"}), 500
+
+    data = request.get_json(silent=True) or {}
+    resident_id = data.get("resident_id")
+
+    try:
+        resident = fetch_own_resident(token, resident_id)
+    except SupabaseUnavailable:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
+    if not resident:
+        return jsonify({"error": "担当する住民が見つかりません"}), 403
+
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/visit_reports",
+            headers=supabase_headers(token),
+            params={
+                "select": "visited_at,full_report",
+                "resident_id": f"eq.{resident_id}",
+                "order": "visited_at.desc,created_at.desc",
+                "limit": "10",
+            },
+            timeout=10,
+        )
+    except Exception:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
+    if not r.ok:
+        return jsonify({"error": r.text}), r.status_code
+
+    reports = r.json()
+    if not reports:
+        return jsonify({"reflection": "まだ日報がありません。訪問記録が溜まると振り返りを表示します。"})
+
+    name = resident.get("name")
+    body = "\n\n".join(
+        f"【{rep['visited_at']}】\n{mask_name(rep.get('full_report', ''), name)}" for rep in reversed(reports)
+    )
+
+    user_msg = (
+        f"以下は同じ対象者（民生委員の担当住民）についての、時系列順の訪問日報です。"
+        f"これらを踏まえて、変化点や気になる傾向を3行程度で振り返ってください。"
+        f"個人が特定できる氏名は使わず「対象者」と表記してください。\n\n{body}"
+    )
+
+    try:
+        reflection = generate_text(
+            "あなたは民生委員の見守り活動を支援するアシスタントです。",
+            user_msg,
+            max_tokens=400,
+            temperature=0.3,
+        )
+        return jsonify({"reflection": reflection})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── 引き継ぎシート用の経緯まとめ ──
+@app.route("/api/handover/summary", methods=["POST"])
+def handover_summary():
+    token = auth_token()
+    user = verify_token(token)
+    if not user:
+        return jsonify({"error": "認証が必要です"}), 401
+
+    if not client:
+        return jsonify({"error": "AIのAPIキーが設定されていません"}), 500
+
+    data = request.get_json(silent=True) or {}
+    resident_id = data.get("resident_id")
+
+    try:
+        resident = fetch_own_resident(token, resident_id)
+    except SupabaseUnavailable:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
+    if not resident:
+        return jsonify({"error": "担当する住民が見つかりません"}), 403
+
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/visit_reports",
+            headers=supabase_headers(token),
+            params={
+                "select": "visited_at,full_report",
+                "resident_id": f"eq.{resident_id}",
+                "order": "visited_at.desc,created_at.desc",
+                "limit": "50",
+            },
+            timeout=10,
+        )
+    except Exception:
+        return jsonify({"error": "通信に失敗しました。電波状況を確認して、もう一度お試しください。"}), 503
+    if not r.ok:
+        return jsonify({"error": r.text}), r.status_code
+
+    reports = r.json()
+    if not reports:
+        return jsonify({"summary": "まだ日報がありません。"})
+
+    name = resident.get("name")
+    body = "\n\n".join(
+        f"【{rep['visited_at']}】\n{mask_name(rep.get('full_report', ''), name)}" for rep in reversed(reports)
+    )
+
+    user_msg = (
+        f"以下は同じ対象者（民生委員の担当住民）についての、時系列順の訪問日報の全記録です。"
+        f"後任の民生委員が引き継ぐ際に読む「経緯まとめ」を3〜5行で作成してください。"
+        f"個人が特定できる氏名は使わず「対象者」と表記してください。\n\n{body}"
+    )
+
+    try:
+        summary = generate_text(
+            "あなたは民生委員の引き継ぎ資料作成を支援するアシスタントです。",
+            user_msg,
+            max_tokens=500,
+            temperature=0.3,
+        )
+        return jsonify({"summary": summary})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ── 日報テキストダウンロード ──
 @app.route("/api/download", methods=["POST"])
 def download_report():

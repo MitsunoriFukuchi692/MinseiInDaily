@@ -206,6 +206,16 @@
         <p class="section-sub" id="history-resident-name"></p>
       </div>
 
+      <div class="history-link-row">
+        <button class="history-link-btn" onclick="showReflection()">🧠 振り返りを見る</button>
+        <button class="history-link-btn" onclick="showHandover()">🖨 引き継ぎシートを出力</button>
+      </div>
+
+      <div class="reflection-card" id="reflection-card" style="display:none;">
+        <div class="reflection-title">🧠 AIによる振り返り</div>
+        <div class="reflection-body" id="reflection-body"></div>
+      </div>
+
       <div id="history-loading" class="loading-msg" style="display:none;">
         <span class="spinner"></span> 読み込み中...
       </div>
@@ -214,6 +224,33 @@
 
       <div id="history-empty" class="empty-msg" style="display:none;">
         保存された日報はまだありません。
+      </div>
+    </div>
+
+    <!-- ======== 画面6: 引き継ぎシート ======== -->
+    <div id="screen-handover" class="screen" style="display:none;">
+      <div class="back-row no-print">
+        <button class="back-btn" onclick="showScreen('history')">← 過去の日報へ戻る</button>
+        <button class="back-btn" onclick="printHandover()">🖨 印刷 / PDF保存</button>
+      </div>
+
+      <div class="handover-sheet">
+        <div class="section-header">
+          <h2>引き継ぎシート</h2>
+          <p class="section-sub" id="handover-resident-name"></p>
+          <p class="section-sub" id="handover-resident-address"></p>
+        </div>
+
+        <div id="handover-loading" class="loading-msg" style="display:none;">
+          <span class="spinner"></span> 読み込み中...
+        </div>
+
+        <div class="handover-summary-card">
+          <div class="handover-summary-title">経緯まとめ</div>
+          <div id="handover-summary" class="handover-summary-body"></div>
+        </div>
+
+        <div id="handover-list"></div>
       </div>
     </div>
 
