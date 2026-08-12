@@ -265,6 +265,17 @@ body {
   margin-bottom: 24px;
 }
 
+.prev-check-banner {
+  background: #fff8e1;
+  border: 1px solid #ffcc80;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.85rem;
+  color: #6d4c00;
+  margin: -12px 0 20px;
+  line-height: 1.5;
+}
+
 /* === 大型マイクボタン === */
 .mic-area {
   display: flex;
@@ -600,6 +611,44 @@ body {
 .resident-visit-badge.warn {
   color: #c62828;
   font-weight: 700;
+}
+
+.resident-next-check {
+  font-size: 0.8rem;
+  color: #4a7c59;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.resident-status-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-select {
+  font-size: 0.78rem;
+  border-radius: 999px;
+  border: 1px solid #ccc;
+  padding: 3px 10px;
+  background: #f5f5f5;
+  color: #555;
+  font-weight: 700;
+}
+.status-select.status-未対応 {
+  background: #ffebee;
+  border-color: #ef9a9a;
+  color: #c62828;
+}
+.status-select.status-対応中 {
+  background: #fff8e1;
+  border-color: #ffcc80;
+  color: #e65100;
+}
+.status-select.status-完了 {
+  background: #e8f5e9;
+  border-color: #a5d6a7;
+  color: #2e7d32;
 }
 
 /* === AI振り返り === */

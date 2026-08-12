@@ -7,6 +7,8 @@ let currentResident = null;  // { id, name, address }
 let accumulatedText = '';
 let recognition = null;
 let isRecording = false;
+let residentInsights = {};  // resident_id -> insight（次回確認事項・対応状況など）
+let pendingNextCheck = '';  // 直近で生成した日報の「次回確認事項」（保存時に一緒に送る）
 
 // ── 初期化 ──
 document.addEventListener('DOMContentLoaded', async () => {
@@ -192,10 +194,15 @@ async function loadResidents() {
           <div class="resident-name">${escHtml(r.name)} さん</div>
           <div class="resident-address">${escHtml(r.address || '')}</div>
           <div class="resident-visit-badge" id="visit-badge-${escHtml(r.id)}"></div>
+          <div class="resident-next-check" id="next-check-${escHtml(r.id)}" style="display:none;"></div>
+          <div class="resident-status-row" id="status-row-${escHtml(r.id)}" style="display:none;"></div>
         </div>
         <div class="resident-arrow">›</div>
       `;
-      card.addEventListener('click', () => selectResident(r));
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.status-select')) return;  // ステータス操作はカード遷移させない
+        selectResident(r);
+      });
       listEl.appendChild(card);
     });
 
@@ -219,17 +226,70 @@ async function loadVisitBadges() {
     if (!res.ok || !data.insights) return;
 
     data.insights.forEach(ins => {
+      residentInsights[ins.resident_id] = ins;
+
       const el = document.getElementById('visit-badge-' + ins.resident_id);
-      if (!el) return;
-      if (ins.days_since >= UNVISITED_WARN_DAYS) {
-        el.textContent = `⚠️ ${ins.days_since}日未訪問`;
-        el.classList.add('warn');
-      } else {
-        el.textContent = `最終訪問：${ins.days_since}日前`;
+      if (el) {
+        if (ins.days_since >= UNVISITED_WARN_DAYS) {
+          el.textContent = `⚠️ ${ins.days_since}日未訪問`;
+          el.classList.add('warn');
+        } else {
+          el.textContent = `最終訪問：${ins.days_since}日前`;
+        }
+      }
+
+      if (ins.next_check) {
+        const ncEl = document.getElementById('next-check-' + ins.resident_id);
+        if (ncEl) {
+          ncEl.textContent = `📌 次回確認：${ins.next_check}`;
+          ncEl.style.display = 'block';
+        }
+      }
+
+      const statusRow = document.getElementById('status-row-' + ins.resident_id);
+      if (statusRow) {
+        statusRow.innerHTML = `
+          <select class="status-select status-${escHtml(ins.status)}" data-report-id="${escHtml(ins.report_id)}" data-resident-id="${escHtml(ins.resident_id)}">
+            <option value="未対応" ${ins.status === '未対応' ? 'selected' : ''}>未対応</option>
+            <option value="対応中" ${ins.status === '対応中' ? 'selected' : ''}>対応中</option>
+            <option value="完了" ${ins.status === '完了' ? 'selected' : ''}>完了</option>
+          </select>
+        `;
+        statusRow.style.display = 'flex';
+        statusRow.querySelector('.status-select').addEventListener('change', onStatusChange);
       }
     });
   } catch (err) {
     // バッジは補助情報なので、失敗しても一覧表示自体は継続する
+  }
+}
+
+// ── 対応状況の変更 ──
+async function onStatusChange(e) {
+  const select = e.target;
+  const reportId = select.dataset.reportId;
+  const residentId = select.dataset.residentId;
+  const newStatus = select.value;
+  const prevClass = Array.from(select.classList).find(c => c.startsWith('status-') && c !== 'status-select');
+
+  try {
+    const res = await fetch('/api/report/update_status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + currentToken,
+      },
+      body: JSON.stringify({ report_id: reportId, status: newStatus }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'エラー');
+
+    if (prevClass) select.classList.remove(prevClass);
+    select.classList.add('status-' + newStatus);
+    if (residentInsights[residentId]) residentInsights[residentId].status = newStatus;
+  } catch (err) {
+    alert('対応状況の更新に失敗しました: ' + err.message);
+    select.value = residentInsights[residentId] ? residentInsights[residentId].status : '未対応';
   }
 }
 
@@ -241,6 +301,15 @@ function selectResident(resident) {
   document.getElementById('recording-resident-name').textContent = resident.name + ' さん';
   document.getElementById('recording-date').textContent =
     '訪問日：' + new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const bannerEl = document.getElementById('prev-check-banner');
+  const insight = residentInsights[resident.id];
+  if (insight && insight.next_check) {
+    bannerEl.textContent = `📌 前回の記録：今回は「${insight.next_check}」を確認してください。`;
+    bannerEl.style.display = 'block';
+  } else {
+    bannerEl.style.display = 'none';
+  }
 
   // 録音UIリセット
   document.getElementById('voice-text').value = '';
@@ -392,6 +461,7 @@ async function generateReport() {
     document.getElementById('report-content').value = data.report;
     document.getElementById('report-card').style.display = 'block';
     document.getElementById('report-actions').style.display = 'block';
+    pendingNextCheck = data.next_check || '';
   } catch (err) {
     document.getElementById('report-loading').style.display = 'none';
     document.getElementById('report-content').value = 'エラーが発生しました: ' + err.message;
@@ -418,6 +488,7 @@ async function saveReport() {
         resident_id: currentResident.id,
         voice_text: document.getElementById('voice-text') ? document.getElementById('voice-text').value : '',
         report: report,
+        next_check: pendingNextCheck,
         visited_at: new Date().toISOString().split('T')[0],
       }),
     });

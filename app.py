@@ -268,7 +268,15 @@ def generate_report():
             max_tokens=1000,
             temperature=0.3,
         )
-        return jsonify({"report": report})
+        next_check = generate_text(
+            "あなたは民生委員の訪問活動を支援するアシスタントです。",
+            f"以下は今回作成した訪問日報です。この内容を踏まえて、次回訪問時に"
+            f"民生委員が確認すべき事項を1文（30〜50文字程度）で簡潔に提案してください。"
+            f"「次回確認：」などの接頭辞は付けず、確認事項の本文だけを出力してください。\n\n{report}",
+            max_tokens=100,
+            temperature=0.3,
+        )
+        return jsonify({"report": report, "next_check": next_check.strip()})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -297,12 +305,42 @@ def save_report():
         "visited_at": data.get("visited_at", datetime.date.today().isoformat()),
         "raw_voice_text": data.get("voice_text", ""),
         "full_report": data.get("report", ""),
+        "next_check": data.get("next_check", ""),
+        "status": "未対応",
     }
 
     r = requests.post(
         f"{SUPABASE_URL}/rest/v1/visit_reports",
         headers={**supabase_headers(token), "Prefer": "return=representation"},
         json=payload,
+        timeout=10,
+    )
+    if r.ok:
+        return jsonify({"status": "ok"})
+    return jsonify({"error": r.text}), r.status_code
+
+
+# ── 対応状況を更新（未対応/対応中/完了） ──
+@app.route("/api/report/update_status", methods=["POST"])
+def update_report_status():
+    token = auth_token()
+    user = verify_token(token)
+    if not user:
+        return jsonify({"error": "認証が必要です"}), 401
+
+    data = request.get_json(silent=True) or {}
+    report_id = data.get("report_id")
+    status = data.get("status")
+    if status not in ("未対応", "対応中", "完了"):
+        return jsonify({"error": "不正なステータスです"}), 400
+    if not report_id:
+        return jsonify({"error": "report_idが必要です"}), 400
+
+    r = requests.patch(
+        f"{SUPABASE_URL}/rest/v1/visit_reports",
+        headers=supabase_headers(token),
+        params={"id": f"eq.{report_id}", "commissioner_id": f"eq.{user['id']}"},
+        json={"status": status},
         timeout=10,
     )
     if r.ok:
@@ -323,8 +361,8 @@ def insights_overview():
             f"{SUPABASE_URL}/rest/v1/visit_reports",
             headers=supabase_headers(token),
             params={
-                "select": "resident_id,visited_at",
-                "order": "resident_id.asc,visited_at.desc",
+                "select": "id,resident_id,visited_at,status,next_check",
+                "order": "resident_id.asc,visited_at.desc,created_at.desc",
             },
             timeout=10,
         )
@@ -334,18 +372,25 @@ def insights_overview():
     if not r.ok:
         return jsonify({"error": r.text}), r.status_code
 
-    # resident_idごとに先頭（最新visited_at）だけ残す
+    # resident_idごとに先頭（最新の日報）だけ残す
     latest = {}
     for row in r.json():
         rid = row["resident_id"]
         if rid not in latest:
-            latest[rid] = row["visited_at"]
+            latest[rid] = row
 
     today = datetime.date.today()
     insights = []
-    for rid, visited_at in latest.items():
-        days_since = (today - datetime.date.fromisoformat(visited_at)).days
-        insights.append({"resident_id": rid, "last_visited_at": visited_at, "days_since": days_since})
+    for rid, row in latest.items():
+        days_since = (today - datetime.date.fromisoformat(row["visited_at"])).days
+        insights.append({
+            "resident_id": rid,
+            "last_visited_at": row["visited_at"],
+            "days_since": days_since,
+            "report_id": row["id"],
+            "status": row.get("status") or "未対応",
+            "next_check": row.get("next_check") or "",
+        })
 
     return jsonify({"insights": insights})
 

@@ -35,8 +35,23 @@ CREATE TABLE IF NOT EXISTS visit_reports (
   visited_at      DATE DEFAULT CURRENT_DATE,
   raw_voice_text  TEXT,
   full_report     TEXT,
+  next_check      TEXT,
+  status          TEXT NOT NULL DEFAULT '未対応' CHECK (status IN ('未対応', '対応中', '完了')),
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 既存環境向け：テーブルが既にある場合にカラムを追加する
+ALTER TABLE visit_reports ADD COLUMN IF NOT EXISTS next_check TEXT;
+ALTER TABLE visit_reports ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT '未対応';
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'visit_reports_status_check'
+  ) THEN
+    ALTER TABLE visit_reports ADD CONSTRAINT visit_reports_status_check
+      CHECK (status IN ('未対応', '対応中', '完了'));
+  END IF;
+END $$;
 
 ALTER TABLE visit_reports ENABLE ROW LEVEL SECURITY;
 
@@ -45,6 +60,9 @@ CREATE POLICY "own_reports_select" ON visit_reports
 
 CREATE POLICY "own_reports_insert" ON visit_reports
   FOR INSERT WITH CHECK (commissioner_id = auth.uid());
+
+CREATE POLICY "own_reports_update" ON visit_reports
+  FOR UPDATE USING (commissioner_id = auth.uid());
 
 -- 【3】サイト閲覧数カウンター（120学会HPなど静的サイト用）
 CREATE TABLE IF NOT EXISTS site_counters (
