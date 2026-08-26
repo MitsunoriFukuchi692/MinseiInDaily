@@ -94,6 +94,51 @@ BEGIN
 END;
 $$;
 
+-- 【4】脳トレゲーム 挑戦記録（120学会HP braintrain 用）
+CREATE TABLE IF NOT EXISTS brain_game_records (
+  id         BIGSERIAL PRIMARY KEY,
+  game       TEXT NOT NULL CHECK (game IN ('kiokusagashi', 'numberguess')),
+  nickname   TEXT NOT NULL,
+  score      INTEGER NOT NULL,
+  cleared    BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS brain_game_records_game_created_idx
+  ON brain_game_records (game, created_at DESC);
+
+-- RLSを有効化し、ポリシーは作らない＝匿名キーからの直接アクセスは不可。
+-- 読み書きはサーバ（サービスキー）経由の関数のみに限定する。
+ALTER TABLE brain_game_records ENABLE ROW LEVEL SECURITY;
+
+-- 記録を1件追加する
+CREATE OR REPLACE FUNCTION insert_brain_game_record(
+  p_game TEXT, p_nickname TEXT, p_score INTEGER, p_cleared BOOLEAN
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO brain_game_records (game, nickname, score, cleared)
+  VALUES (p_game, p_nickname, p_score, p_cleared);
+END;
+$$;
+
+-- 記録を新しい順に取得する
+CREATE OR REPLACE FUNCTION get_brain_game_records(p_game TEXT, p_limit INTEGER)
+RETURNS SETOF brain_game_records
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT * FROM brain_game_records
+  WHERE game = p_game
+  ORDER BY created_at DESC
+  LIMIT p_limit;
+$$;
+
 -- =====================================================
 -- 【初期データ投入例】管理者がSupabase上で直接実行
 -- commissioner_id には Supabase Auth の user.id を入れる

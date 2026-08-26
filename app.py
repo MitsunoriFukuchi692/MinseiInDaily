@@ -18,6 +18,11 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 # （任意の site 名で行が量産されるのを防ぐ）。
 COUNTER_ALLOWED_SITES = {"120gakkai.com", "robostudy.jp", "robostudy.jp/chatbot"}
 
+# ── 脳トレゲーム 挑戦記録設定 ──
+# 120学会HP（braintrain）の各ゲームから叩かれる。任意の game 名で行が
+# 量産されないよう、決め打ちの許可リストのみ受け付ける。
+BRAIN_GAME_ALLOWED = {"kiokusagashi", "numberguess"}
+
 # ── LLMプロバイダ設定 ──
 # LLM_PROVIDER で切り替える（openai / gemini / vertex）。
 # 自治体案件では ISMAP 登録済みの vertex（東京リージョン）を使うこと。
@@ -543,7 +548,7 @@ def download_report():
 # 別オリジン（120gakkai.com）から呼ばれるため CORS を許可する。
 @app.after_request
 def _counter_cors(resp):
-    if request.path.startswith("/api/counter"):
+    if request.path.startswith("/api/counter") or request.path.startswith("/api/braingame"):
         origin = request.headers.get("Origin")
         if origin:
             resp.headers["Access-Control-Allow-Origin"] = origin
@@ -599,6 +604,83 @@ def counter_hit():
 
     if r.ok:
         return jsonify({"count": r.json()})
+    return jsonify({"error": r.text}), r.status_code
+
+
+# ── 脳トレゲーム 挑戦記録 ──
+# 120学会HP（braintrain）の各ゲームから叩かれる、みんなで見られる挑戦記録。
+@app.route("/api/braingame/records", methods=["GET"])
+def braingame_records():
+    game = (request.args.get("game") or "").strip()
+    if game not in BRAIN_GAME_ALLOWED:
+        return jsonify({"error": "unknown game"}), 400
+
+    try:
+        limit = int(request.args.get("limit", 50))
+    except ValueError:
+        limit = 50
+    limit = max(1, min(limit, 100))
+
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/get_brain_game_records",
+            headers=supabase_headers(),
+            json={"p_game": game, "p_limit": limit},
+            timeout=10,
+        )
+    except Exception:
+        return jsonify({"error": "通信に失敗しました"}), 503
+
+    if r.ok:
+        rows = r.json()
+        records = [
+            {
+                "nickname": row["nickname"],
+                "score": row["score"],
+                "cleared": row["cleared"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+        return jsonify({"records": records})
+    return jsonify({"error": r.text}), r.status_code
+
+
+@app.route("/api/braingame/record", methods=["POST", "OPTIONS"])
+def braingame_record():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    data = request.get_json(silent=True) or {}
+    game = (data.get("game") or "").strip()
+    if game not in BRAIN_GAME_ALLOWED:
+        return jsonify({"error": "unknown game"}), 400
+
+    nickname = (data.get("nickname") or "").strip()[:20]
+    if not nickname:
+        return jsonify({"error": "nickname is required"}), 400
+
+    try:
+        score = int(data.get("score"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid score"}), 400
+    if not (0 <= score <= 1000):
+        return jsonify({"error": "invalid score"}), 400
+
+    cleared = bool(data.get("cleared"))
+
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/insert_brain_game_record",
+            headers=supabase_headers(),
+            json={"p_game": game, "p_nickname": nickname, "p_score": score, "p_cleared": cleared},
+            timeout=10,
+        )
+    except Exception:
+        return jsonify({"error": "通信に失敗しました"}), 503
+
+    if r.ok:
+        return jsonify({"ok": True})
     return jsonify({"error": r.text}), r.status_code
 
 
