@@ -97,7 +97,7 @@ $$;
 -- 【4】脳トレゲーム 挑戦記録（120学会HP braintrain 用）
 CREATE TABLE IF NOT EXISTS brain_game_records (
   id         BIGSERIAL PRIMARY KEY,
-  game       TEXT NOT NULL CHECK (game IN ('kiokusagashi', 'numberguess')),
+  game       TEXT NOT NULL CHECK (game IN ('kiokusagashi', 'numberguess', 'natsukashi-shiritori', 'kotowaza-anaume')),
   nickname   TEXT NOT NULL,
   score      INTEGER NOT NULL,
   cleared    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -106,6 +106,12 @@ CREATE TABLE IF NOT EXISTS brain_game_records (
 
 CREATE INDEX IF NOT EXISTS brain_game_records_game_created_idx
   ON brain_game_records (game, created_at DESC);
+
+-- 既存DBには CREATE TABLE IF NOT EXISTS が効かないため、ゲーム追加時は
+-- 下記マイグレーションを Supabase SQL エディタで実行して CHECK 制約を更新する。
+ALTER TABLE brain_game_records DROP CONSTRAINT IF EXISTS brain_game_records_game_check;
+ALTER TABLE brain_game_records ADD CONSTRAINT brain_game_records_game_check
+  CHECK (game IN ('kiokusagashi', 'numberguess', 'natsukashi-shiritori', 'kotowaza-anaume'));
 
 -- RLSを有効化し、ポリシーは作らない＝匿名キーからの直接アクセスは不可。
 -- 読み書きはサーバ（サービスキー）経由の関数のみに限定する。

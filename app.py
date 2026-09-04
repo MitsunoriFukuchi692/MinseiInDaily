@@ -21,7 +21,7 @@ COUNTER_ALLOWED_SITES = {"120gakkai.com", "robostudy.jp", "robostudy.jp/chatbot"
 # ── 脳トレゲーム 挑戦記録設定 ──
 # 120学会HP（braintrain）の各ゲームから叩かれる。任意の game 名で行が
 # 量産されないよう、決め打ちの許可リストのみ受け付ける。
-BRAIN_GAME_ALLOWED = {"kiokusagashi", "numberguess"}
+BRAIN_GAME_ALLOWED = {"kiokusagashi", "numberguess", "natsukashi-shiritori", "kotowaza-anaume"}
 
 # ── LLMプロバイダ設定 ──
 # LLM_PROVIDER で切り替える（openai / gemini / vertex）。
