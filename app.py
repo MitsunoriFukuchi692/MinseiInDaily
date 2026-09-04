@@ -16,14 +16,17 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 # ── 閲覧数カウンター設定 ──
 # 他サイトから叩かれるため、集計対象は決め打ちの許可リストのみに限定する
 # （任意の site 名で行が量産されるのを防ぐ）。
-COUNTER_ALLOWED_SITES = {"120gakkai.com", "robostudy.jp", "robostudy.jp/chatbot"}
+COUNTER_ALLOWED_SITES = {
+    "120gakkai.com", "120gakkai.com/braintrain",
+    "robostudy.jp", "robostudy.jp/chatbot",
+}
 
 # ── 脳トレゲーム 挑戦記録設定 ──
 # 120学会HP（braintrain）の各ゲームから叩かれる。任意の game 名で行が
 # 量産されないよう、決め打ちの許可リストのみ受け付ける。
 BRAIN_GAME_ALLOWED = {
     "kiokusagashi", "numberguess", "natsukashi-shiritori",
-    "kotowaza-anaume", "showa-crossword",
+    "kotowaza-anaume", "showa-crossword", "nou-nenrei",
 }
 
 # ── LLMプロバイダ設定 ──
