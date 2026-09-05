@@ -26,7 +26,7 @@ COUNTER_ALLOWED_SITES = {
 # 量産されないよう、決め打ちの許可リストのみ受け付ける。
 BRAIN_GAME_ALLOWED = {
     "kiokusagashi", "numberguess", "natsukashi-shiritori",
-    "kotowaza-anaume", "showa-crossword", "nou-nenrei",
+    "kotowaza-anaume", "showa-crossword", "nou-nenrei", "junban-narabe",
 }
 
 # ── LLMプロバイダ設定 ──
