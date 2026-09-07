@@ -97,7 +97,7 @@ $$;
 -- 【4】脳トレゲーム 挑戦記録（120学会HP braintrain 用）
 CREATE TABLE IF NOT EXISTS brain_game_records (
   id         BIGSERIAL PRIMARY KEY,
-  game       TEXT NOT NULL CHECK (game IN ('kiokusagashi', 'numberguess', 'natsukashi-shiritori', 'kotowaza-anaume', 'showa-crossword', 'nou-nenrei', 'junban-narabe')),
+  game       TEXT NOT NULL CHECK (game IN ('kiokusagashi', 'numberguess', 'numberguess2', 'natsukashi-shiritori', 'kotowaza-anaume', 'showa-crossword', 'nou-nenrei', 'junban-narabe')),
   nickname   TEXT NOT NULL,
   score      INTEGER NOT NULL,
   cleared    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -111,13 +111,45 @@ CREATE INDEX IF NOT EXISTS brain_game_records_game_created_idx
 -- 下記マイグレーションを Supabase SQL エディタで実行して CHECK 制約を更新する。
 ALTER TABLE brain_game_records DROP CONSTRAINT IF EXISTS brain_game_records_game_check;
 ALTER TABLE brain_game_records ADD CONSTRAINT brain_game_records_game_check
-  CHECK (game IN ('kiokusagashi', 'numberguess', 'natsukashi-shiritori', 'kotowaza-anaume', 'showa-crossword', 'nou-nenrei', 'junban-narabe'));
+  CHECK (game IN ('kiokusagashi', 'numberguess', 'numberguess2', 'natsukashi-shiritori', 'kotowaza-anaume', 'showa-crossword', 'nou-nenrei', 'junban-narabe'));
 
 -- RLSを有効化し、ポリシーは作らない＝匿名キーからの直接アクセスは不可。
 -- 読み書きはサーバ（サービスキー）経由の関数のみに限定する。
 ALTER TABLE brain_game_records ENABLE ROW LEVEL SECURITY;
 
--- 記録を1件追加する
+-- 同じニックネームは同一人物とみなし、1ゲームあたり1行（ベスト記録）だけ残す。
+-- スコアの良し悪しはゲームで向きが違う：
+--   numberguess・numberguess2（当てるまでの回数）・nou-nenrei（脳年齢）は「小さいほど良い」、
+--   その他（kiokusagashi / natsukashi-shiritori / kotowaza-anaume /
+--   showa-crossword / junban-narabe）は「大きいほど良い」。
+CREATE OR REPLACE FUNCTION brain_game_lower_is_better(p_game TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT p_game IN ('numberguess', 'numberguess2', 'nou-nenrei');
+$$;
+
+-- 【既存データの整理】各 (game, nickname) でベスト記録以外を削除する。
+-- 同点の場合は先に出した（id が小さい）記録を残す。
+DELETE FROM brain_game_records b
+USING brain_game_records k
+WHERE b.game = k.game
+  AND b.nickname = k.nickname
+  AND b.id <> k.id
+  AND CASE
+        WHEN brain_game_lower_is_better(b.game)
+          THEN (k.score < b.score) OR (k.score = b.score AND k.id < b.id)
+        ELSE (k.score > b.score) OR (k.score = b.score AND k.id < b.id)
+      END;
+
+-- 以後 (game, nickname) は一意。重複を作らせない。
+ALTER TABLE brain_game_records
+  DROP CONSTRAINT IF EXISTS brain_game_records_game_nick_uniq;
+ALTER TABLE brain_game_records
+  ADD CONSTRAINT brain_game_records_game_nick_uniq UNIQUE (game, nickname);
+
+-- 記録を追加する（同じニックネームなら、より良いときだけ上書き）
 CREATE OR REPLACE FUNCTION insert_brain_game_record(
   p_game TEXT, p_nickname TEXT, p_score INTEGER, p_cleared BOOLEAN
 )
@@ -128,7 +160,16 @@ SET search_path = public
 AS $$
 BEGIN
   INSERT INTO brain_game_records (game, nickname, score, cleared)
-  VALUES (p_game, p_nickname, p_score, p_cleared);
+  VALUES (p_game, p_nickname, p_score, p_cleared)
+  ON CONFLICT (game, nickname) DO UPDATE
+    SET score = EXCLUDED.score,
+        cleared = EXCLUDED.cleared,
+        created_at = NOW()
+  WHERE CASE
+          WHEN brain_game_lower_is_better(EXCLUDED.game)
+            THEN EXCLUDED.score < brain_game_records.score
+          ELSE EXCLUDED.score > brain_game_records.score
+        END;
 END;
 $$;
 

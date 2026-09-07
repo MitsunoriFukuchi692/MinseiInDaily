@@ -25,7 +25,7 @@ COUNTER_ALLOWED_SITES = {
 # 120学会HP（braintrain）の各ゲームから叩かれる。任意の game 名で行が
 # 量産されないよう、決め打ちの許可リストのみ受け付ける。
 BRAIN_GAME_ALLOWED = {
-    "kiokusagashi", "numberguess", "natsukashi-shiritori",
+    "kiokusagashi", "numberguess", "numberguess2", "natsukashi-shiritori",
     "kotowaza-anaume", "showa-crossword", "nou-nenrei", "junban-narabe",
 }
 
