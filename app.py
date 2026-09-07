@@ -27,7 +27,7 @@ COUNTER_ALLOWED_SITES = {
 BRAIN_GAME_ALLOWED = {
     "kiokusagashi", "numberguess", "numberguess2", "natsukashi-shiritori",
     "kotowaza-anaume", "showa-crossword", "nou-nenrei", "junban-narabe",
-    "soroban",
+    "soroban", "soroban2",
 }
 
 # ── LLMプロバイダ設定 ──
